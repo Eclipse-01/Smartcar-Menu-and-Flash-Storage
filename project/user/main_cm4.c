@@ -34,7 +34,7 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
-#include "KV_Storage.h"
+#include "Configurator_Headfile.h"
 
 // 打开新的工程或者工程移动了位置务必执行以下操作
 // 第一步 关闭上面所有打开的文件
@@ -52,12 +52,27 @@ int main(void)
     
     debug_init();                       // 调试串口初始化
     // 此处编写用户代码 例如外设初始化代码等
-    kv_storage_init();            // KV 存储初始化
-    kv_load_data();              // 从 flash 中加载数据到 KV_List
-    int Dingdongji = -21; // 示例整数值
-    kv_storage_get_int("Dingdongji", &Dingdongji); // 获取键值对示例
-    printf("KV Storage Initialized.\n");
-    printf("Read  %s from KV Storage. Value: %d\n", "Dingdongji", Dingdongji);
+    ips200_init(IPS200_TYPE_SPI);                   // IPS200 初始化
+    ips200_clear();                    // 清屏
+    Menu MainMenu = {
+    .MenuTitle = "Main Menu",
+    .Items = {
+        {"Item1", "1", NULL},
+        {"Item2", "3", NULL},
+        {"Item3", "5", NULL},
+        {"Item4", "7.88", NULL},
+        {"Item5", "Value5", NULL},
+        {"Item6", "6", NULL},
+        {"Item7", "7", NULL},
+        {"Item8", "8", NULL}
+    },
+    .ItemCount = 8,
+    .CurrentPage = 0,
+    .CurrentSelection = 0
+    };
+
+
+    EnterMenu(&MainMenu); // 绘制主菜单
     // 此处编写用户代码 例如外设初始化代码等
     for(;;)
     {
