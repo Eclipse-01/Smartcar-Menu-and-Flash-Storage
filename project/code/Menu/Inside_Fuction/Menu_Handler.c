@@ -23,6 +23,7 @@ void EnterMenu(Menu *menu)
     if (menu_depth == 1) {
         printf("正在从Flash加载设置数据...\n");
         kv_load_data(); // 从Flash加载数据
+        printf("Flash数据加载完成，开始同步到菜单...\n");
         sync_kv_storage_to_menu_recursive(menu); // 递归同步所有子菜单
         printf("Flash数据加载完成\n");
     }

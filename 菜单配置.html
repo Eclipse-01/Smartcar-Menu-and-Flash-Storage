@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>嵌入式菜单生成器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Helvetica Neue', 'Arial', 'sans-serif';
+            background-color: #f0f2f5;
+        }
+        .menu-item, .menu-container {
+            border-left: 2px solid #e2e8f0;
+            padding-left: 1.5rem;
+            margin-top: 1rem;
+        }
+        .menu-container {
+            border-left: 2px solid #94a3b8;
+        }
+        .draggable {
+            cursor: grab;
+        }
+        .dragging {
+            opacity: 0.5;
+            background: #e0f2fe;
+        }
+        .drop-zone {
+            height: 1.5rem;
+            background: #f0f9ff;
+            border: 2px dashed #38bdf8;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .drop-zone-active {
+            opacity: 1;
+        }
+        .custom-input {
+            @apply w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition;
+        }
+        .custom-select {
+             @apply w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition bg-white;
+        }
+        .btn {
+            @apply px-4 py-2 rounded-md font-semibold text-white shadow-md transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2;
+        }
+        .btn-primary {
+            @apply bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500;
+        }
+        .btn-secondary {
+            @apply bg-gray-500 hover:bg-gray-600 focus:ring-gray-400;
+        }
+        .btn-danger {
+            @apply bg-red-600 hover:bg-red-700 focus:ring-red-500;
+        }
+        .btn-icon {
+            @apply px-2 py-1 text-sm;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">嵌入式菜单生成器</h1>
+            <p class="text-gray-600 mt-2">可视化配置您的菜单，并一键生成C代码。</p>
+        </header>
+
+        <!-- Main Controls -->
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8 flex flex-wrap gap-4 items-center justify-center">
+            <button id="add-menu-btn" class="btn btn-primary"><i class="fas fa-plus mr-2"></i>添加新菜单</button>
+            <button id="save-json-btn" class="btn btn-secondary"><i class="fas fa-save mr-2"></i>保存配置 (JSON)</button>
+            <label class="btn btn-secondary cursor-pointer"><i class="fas fa-upload mr-2"></i>加载配置 (JSON)<input type="file" id="load-json-input" class="hidden" accept=".json"></label>
+            <button id="generate-code-btn" class="btn bg-green-600 hover:bg-green-700 focus:ring-green-500"><i class="fas fa-code mr-2"></i>生成并下载C代码</button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left Panel: Editor -->
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold text-gray-700 border-b pb-2 mb-4">菜单编辑器</h2>
+                
+                <!-- Theme Settings -->
+                <div class="bg-gray-50 p-4 rounded-lg mb-6">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-3">主题与全局设置 (Theme.h)</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">每页最大项目数</label>
+                            <input type="number" id="max-items-input" class="custom-input mt-1" value="9">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">普通文本颜色</label>
+                            <input type="text" id="textcolor-input" class="custom-input mt-1" value="RGB565_WHITE">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">选中时文本颜色</label>
+                            <input type="text" id="textselectedcolor-input" class="custom-input mt-1" value="RGB565_BLUE">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">背景颜色</label>
+                            <input type="text" id="backgroundcolor-input" class="custom-input mt-1" value="RGB565_BLACK">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">选中时背景颜色</label>
+                            <input type="text" id="backgroundselectedcolor-input" class="custom-input mt-1" value="RGB565_GRAY">
+                        </div>
+                         <div>
+                            <label class="block text-sm font-medium text-gray-700">标题分隔线颜色</label>
+                            <input type="text" id="titleseperatorcolor-input" class="custom-input mt-1" value="RGB565_GRAY">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">修改值时文本颜色</label>
+                            <input type="text" id="changevaluetextcolor-input" class="custom-input mt-1" value="RGB565_GREEN">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">修改值时选中位颜色</label>
+                            <input type="text" id="changevaluetextselectedbitcolor-input" class="custom-input mt-1" value="RGB565_YELLOW">
+                        </div>
+                         <div>
+                            <label class="block text-sm font-medium text-gray-700">修改值时选中位背景色</label>
+                            <input type="text" id="changevaluetextselectedbackgroundcolor-input" class="custom-input mt-1" value="RGB565_BLUE">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Menu Structure -->
+                <div id="menu-editor-container">
+                    <!-- Menus will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Right Panel: Code Preview -->
+            <div class="bg-gray-800 text-white p-6 rounded-xl shadow-lg font-mono text-sm">
+                <h2 class="text-2xl font-bold border-b border-gray-600 pb-2 mb-4">代码预览</h2>
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="text-lg font-semibold text-green-400 mb-2">Menu_Content.c</h3>
+                        <pre id="code-preview-c" class="bg-gray-900 p-4 rounded-lg h-64 overflow-auto"></pre>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-green-400 mb-2">Theme.h</h3>
+                        <pre id="code-preview-theme" class="bg-gray-900 p-4 rounded-lg h-48 overflow-auto"></pre>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-green-400 mb-2">Configurator_Headfile.h</h3>
+                        <pre id="code-preview-config" class="bg-gray-900 p-4 rounded-lg h-48 overflow-auto"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DATA MODEL ---
+        let config = {
+            theme: {},
+            menus: []
+        };
+
+        // --- DOM ELEMENTS ---
+        const menuEditorContainer = document.getElementById('menu-editor-container');
+        const addMenuBtn = document.getElementById('add-menu-btn');
+        const saveJsonBtn = document.getElementById('save-json-btn');
+        const loadJsonInput = document.getElementById('load-json-input');
+        const generateCodeBtn = document.getElementById('generate-code-btn');
+        
+        const codePreviewC = document.getElementById('code-preview-c');
+        const codePreviewTheme = document.getElementById('code-preview-theme');
+        const codePreviewConfig = document.getElementById('code-preview-config');
+
+        // Theme inputs
+        const themeInputs = {
+            maxItems: document.getElementById('max-items-input'),
+            textColor: document.getElementById('textcolor-input'),
+            textSelectedColor: document.getElementById('textselectedcolor-input'),
+            backgroundColor: document.getElementById('backgroundcolor-input'),
+            backgroundSelectedColor: document.getElementById('backgroundselectedcolor-input'),
+            titleSeperatorColor: document.getElementById('titleseperatorcolor-input'),
+            changeValueTextColor: document.getElementById('changevaluetextcolor-input'),
+            changeValueTextSelectedBitColor: document.getElementById('changevaluetextselectedbitcolor-input'),
+            changeValueTextSelectedBackgroundColor: document.getElementById('changevaluetextselectedbackgroundcolor-input'),
+        };
+
+        // --- INITIALIZATION ---
+        function init() {
+            // Load default config
+            loadDefaultConfig();
+            updateAll();
+            attachEventListeners();
+        }
+
+        function loadDefaultConfig() {
+            config = {
+                theme: {
+                    maxItems: 9,
+                    textColor: 'RGB565_WHITE',
+                    textSelectedColor: 'RGB565_BLUE',
+                    backgroundColor: 'RGB565_BLACK',
+                    backgroundSelectedColor: 'RGB565_GRAY',
+                    titleSeperatorColor: 'RGB565_GRAY',
+                    changeValueTextColor: 'RGB565_GREEN',
+                    changeValueTextSelectedBitColor: 'RGB565_YELLOW',
+                    changeValueTextSelectedBackgroundColor: 'RGB565_BLUE'
+                },
+                menus: [
+                    {
+                        id: Date.now(),
+                        name: 'MainMenu',
+                        items: [
+                            { id: Date.now() + 1, name: 'HUAWEI', type: 'INT', value: '190' },
+                            { id: Date.now() + 2, name: 'Xiaomi', type: 'FLOAT', value: '114.514' },
+                            { id: Date.now() + 3, name: 'Samsung', type: 'BOOL', value: '1' },
+                            { id: Date.now() + 4, name: 'Apple', type: 'MENU', value: 'AppleJuice' },
+                        ]
+                    },
+                    {
+                        id: Date.now() + 5,
+                        name: 'AppleJuice',
+                        items: [
+                            { id: Date.now() + 6, name: 'Function', type: 'FUNCTION', value: 'SystemReset' }
+                        ]
+                    }
+                ]
+            };
+            updateThemeInputs();
+        }
+        
+        function updateAll() {
+            renderMenuEditor();
+            generateAndDisplayCode();
+        }
+
+        // --- RENDER UI ---
+        function renderMenuEditor() {
+            menuEditorContainer.innerHTML = '';
+            config.menus.forEach(menu => {
+                const menuElement = createMenuElement(menu);
+                menuEditorContainer.appendChild(menuElement);
+            });
+            addDragAndDropListeners();
+        }
+
+        function createMenuElement(menu) {
+            const container = document.createElement('div');
+            container.className = 'menu-container bg-white p-4 rounded-lg shadow mb-4';
+            container.dataset.menuId = menu.id;
+
+            container.innerHTML = `
+                <div class="flex justify-between items-center mb-3">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-bars text-gray-400 draggable"></i>
+                        <input type="text" value="${menu.name}" data-action="rename-menu" class="text-xl font-semibold bg-transparent border-b-2 border-transparent focus:border-indigo-500 outline-none">
+                        ${config.menus[0].id === menu.id ? '<span class="text-xs bg-blue-100 text-blue-800 font-medium px-2 py-0.5 rounded-full">主菜单</span>' : ''}
+                    </div>
+                    <div>
+                        <button data-action="add-item" class="btn btn-primary btn-icon"><i class="fas fa-plus"></i></button>
+                        <button data-action="delete-menu" class="btn btn-danger btn-icon ml-2"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+                <div class="items-container space-y-3">
+                    ${menu.items.map(item => createItemElement(item)).join('')}
+                </div>
+            `;
+            return container;
+        }
+
+        function createItemElement(item) {
+            const itemTypes = ['INT', 'FLOAT', 'BOOL', 'MENU', 'FUNCTION'];
+            const typeOptions = itemTypes.map(t => `<option value="${t}" ${item.type === t ? 'selected' : ''}>${t}</option>`).join('');
+            
+            let valueInput = '';
+            if (item.type === 'MENU') {
+                const menuOptions = config.menus.map(m => `<option value="${m.name}" ${item.value === m.name ? 'selected' : ''}>${m.name}</option>`).join('');
+                valueInput = `<select data-prop="value" class="custom-select">${menuOptions}</select>`;
+            } else if (item.type === 'BOOL') {
+                 valueInput = `<select data-prop="value" class="custom-select">
+                    <option value="1" ${item.value === '1' ? 'selected' : ''}>TRUE (1)</option>
+                    <option value="0" ${item.value === '0' || !item.value ? 'selected' : ''}>FALSE (0)</option>
+                 </select>`;
+            } 
+            else {
+                valueInput = `<input type="text" data-prop="value" class="custom-input" value="${item.value || ''}" placeholder="${item.type === 'FUNCTION' ? '函数名' : '默认值'}">`;
+            }
+
+            return `
+                <div class="menu-item bg-gray-50 p-3 rounded-md flex items-center gap-3" data-item-id="${item.id}">
+                    <i class="fas fa-grip-vertical text-gray-400 draggable"></i>
+                    <div class="flex-grow grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <input type="text" data-prop="name" class="custom-input" value="${item.name}" placeholder="项目名称">
+                        <select data-prop="type" class="custom-select">${typeOptions}</select>
+                        <div class="value-container">${valueInput}</div>
+                    </div>
+                    <button data-action="delete-item" class="btn btn-danger btn-icon"><i class="fas fa-times"></i></button>
+                </div>
+            `;
+        }
+
+        // --- EVENT HANDLING ---
+        function attachEventListeners() {
+            addMenuBtn.addEventListener('click', handleAddMenu);
+            saveJsonBtn.addEventListener('click', handleSaveJson);
+            loadJsonInput.addEventListener('change', handleLoadJson);
+            generateCodeBtn.addEventListener('click', handleGenerateCode);
+
+            menuEditorContainer.addEventListener('input', handleEditorInput);
+            menuEditorContainer.addEventListener('click', handleEditorClick);
+            
+            Object.values(themeInputs).forEach(input => {
+                input.addEventListener('input', () => {
+                    updateConfigFromThemeInputs();
+                    generateAndDisplayCode();
+                });
+            });
+        }
+
+        function handleAddMenu() {
+            const newMenuName = `NewMenu${config.menus.length + 1}`;
+            config.menus.push({
+                id: Date.now(),
+                name: newMenuName,
+                items: []
+            });
+            updateAll();
+        }
+
+        function handleEditorClick(e) {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+
+            const action = target.dataset.action;
+            const menuElement = target.closest('[data-menu-id]');
+            const itemElement = target.closest('[data-item-id]');
+            const menuId = menuElement ? Number(menuElement.dataset.menuId) : null;
+            const itemId = itemElement ? Number(itemElement.dataset.itemId) : null;
+
+            if (action === 'delete-menu') {
+                if (confirm(`确定要删除菜单 "${findMenu(menuId).name}" 吗?`)) {
+                    config.menus = config.menus.filter(m => m.id !== menuId);
+                    updateAll();
+                }
+            } else if (action === 'add-item') {
+                const menu = findMenu(menuId);
+                menu.items.push({ id: Date.now(), name: 'NewItem', type: 'INT', value: '0' });
+                updateAll();
+            } else if (action === 'delete-item') {
+                const menu = findMenu(menuId);
+                menu.items = menu.items.filter(i => i.id !== itemId);
+                updateAll();
+            }
+        }
+
+        function handleEditorInput(e) {
+            const target = e.target;
+            const menuElement = target.closest('[data-menu-id]');
+            const itemElement = target.closest('[data-item-id]');
+            
+            if (!menuElement) return;
+            const menuId = Number(menuElement.dataset.menuId);
+            const menu = findMenu(menuId);
+
+            if (target.dataset.action === 'rename-menu') {
+                const oldName = menu.name;
+                const newName = target.value.replace(/[^a-zA-Z0-9_]/g, ''); // Sanitize
+                target.value = newName;
+                menu.name = newName;
+                // Update any links to this menu
+                config.menus.forEach(m => {
+                    m.items.forEach(i => {
+                        if (i.type === 'MENU' && i.value === oldName) {
+                            i.value = newName;
+                        }
+                    });
+                });
+
+            } else if (itemElement) {
+                const itemId = Number(itemElement.dataset.itemId);
+                const item = findItem(menu, itemId);
+                const prop = target.dataset.prop;
+                
+                if (prop) {
+                    item[prop] = target.value;
+                    if (prop === 'type') {
+                        // Reset value when type changes
+                        item.value = item.type === 'BOOL' ? '0' : '';
+                    }
+                }
+            }
+            updateAll();
+        }
+        
+        // --- DRAG AND DROP ---
+        function addDragAndDropListeners() {
+            const draggables = document.querySelectorAll('.draggable');
+            draggables.forEach(draggable => {
+                draggable.addEventListener('dragstart', (e) => {
+                    const element = e.target.closest('[data-menu-id], [data-item-id]');
+                    element.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    if (element.dataset.itemId) {
+                        e.dataTransfer.setData('text/plain', `item:${element.dataset.itemId}`);
+                    } else {
+                        e.dataTransfer.setData('text/plain', `menu:${element.dataset.menuId}`);
+                    }
+                });
+
+                draggable.addEventListener('dragend', (e) => {
+                    const element = e.target.closest('[data-menu-id], [data-item-id]');
+                    element.classList.remove('dragging');
+                    document.querySelectorAll('.drop-zone-active').forEach(dz => dz.classList.remove('drop-zone-active'));
+                });
+            });
+
+            const containers = document.querySelectorAll('.items-container, #menu-editor-container');
+            containers.forEach(container => {
+                container.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    const dropZone = e.target.closest('.drop-zone');
+                    if(dropZone) {
+                       document.querySelectorAll('.drop-zone-active').forEach(dz => dz.classList.remove('drop-zone-active'));
+                       dropZone.classList.add('drop-zone-active');
+                    }
+                });
+                
+                container.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const dropZone = e.target.closest('.drop-zone');
+                    if (!dropZone) return;
+
+                    const [type, idStr] = e.dataTransfer.getData('text/plain').split(':');
+                    const id = Number(idStr);
+                    const targetMenuId = Number(dropZone.closest('[data-menu-id]')?.dataset.menuId);
+                    const afterItemId = Number(dropZone.dataset.afterItemId);
+
+                    if (type === 'item') {
+                        let sourceMenu, item, sourceIndex;
+                        for (const m of config.menus) {
+                            const idx = m.items.findIndex(i => i.id === id);
+                            if (idx !== -1) {
+                                sourceMenu = m;
+                                item = m.items[idx];
+                                sourceIndex = idx;
+                                break;
+                            }
+                        }
+                        
+                        if (!item) return;
+
+                        const targetMenu = findMenu(targetMenuId);
+                        if (!targetMenu) return;
+
+                        // Remove from source
+                        sourceMenu.items.splice(sourceIndex, 1);
+                        
+                        // Add to target
+                        const targetIndex = afterItemId === 0 ? 0 : targetMenu.items.findIndex(i => i.id === afterItemId) + 1;
+                        targetMenu.items.splice(targetIndex, 0, item);
+
+                    } else if (type === 'menu') {
+                         const menuToMove = findMenu(id);
+                         if (!menuToMove) return;
+                         
+                         const sourceIndex = config.menus.findIndex(m => m.id === id);
+                         config.menus.splice(sourceIndex, 1);
+                         
+                         const targetIndex = afterItemId === 0 ? 0 : config.menus.findIndex(m => m.id === afterItemId) + 1;
+                         config.menus.splice(targetIndex, 0, menuToMove);
+                    }
+                    
+                    updateAll();
+                });
+            });
+        }
+
+
+        // --- DATA PERSISTENCE ---
+        function handleSaveJson() {
+            updateConfigFromThemeInputs();
+            const jsonString = JSON.stringify(config, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'menu_config.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function handleLoadJson(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const loadedConfig = JSON.parse(e.target.result);
+                    if (loadedConfig.theme && loadedConfig.menus) {
+                        config = loadedConfig;
+                        updateThemeInputs();
+                        updateAll();
+                    } else {
+                        alert('无效的配置文件格式。');
+                    }
+                } catch (error) {
+                    alert('加载文件失败，请确保文件是正确的JSON格式。');
+                    console.error("JSON Parse Error:", error);
+                }
+            };
+            reader.readAsText(file);
+            // Reset input so the same file can be loaded again
+            event.target.value = '';
+        }
+
+        // --- CODE GENERATION ---
+        function handleGenerateCode() {
+            const zip = new JSZip();
+            zip.file("Menu_Content.c", generateMenuContentSource());
+            zip.file("Theme.h", generateThemeSource());
+            zip.file("Configurator_Headfile.h", generateConfiguratorHeadfileSource());
+
+            zip.generateAsync({ type: "blob" }).then(function(content) {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(content);
+                a.download = "Menu_Config_Files.zip";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+        }
+        
+        function generateAndDisplayCode() {
+            updateConfigFromThemeInputs();
+            codePreviewC.textContent = generateMenuContentSource();
+            codePreviewTheme.textContent = generateThemeSource();
+            codePreviewConfig.textContent = generateConfiguratorHeadfileSource();
+        }
+
+        function generateThemeSource() {
+            const t = config.theme;
+            return `// Generated by Menu Configurator
+
+#ifndef THEME_H
+#define THEME_H
+
+#include "zf_common_headfile.h"
+
+#define TextColor ${t.textColor}
+#define Text_Selected_Color ${t.textSelectedColor}
+#define BackgroundColor ${t.backgroundColor}
+#define Background_Selected_Color ${t.backgroundSelectedColor}
+#define TitleSeperatorColor ${t.titleSeperatorColor}
+#define ChangeValueTextColor ${t.changeValueTextColor}
+#define ChangeValueText_Selected_BitColor ${t.changeValueTextSelectedBitColor}
+#define ChangeValueText_Selected_Background_Color ${t.changeValueTextSelectedBackgroundColor}
+#define MAX_ITEMS_PER_PAGE ${t.maxItems}
+
+#endif // THEME_H
+`;
+        }
+
+        function generateConfiguratorHeadfileSource() {
+            const rootMenu = config.menus.length > 0 ? config.menus[0].name : 'MainMenu';
+            return `// Generated by Menu Configurator
+#ifndef CONFIGURATOR_HEADFILE_H
+#define CONFIGURATOR_HEADFILE_H
+
+#include "zf_common_headfile.h"
+#include "zf_device_ips200.h"
+#include "UserConfig.h"
+#include "Theme.h"
+#include "BasicGeos.h"
+#include "ComplexGraphics.h"
+#include "Items.h"
+#include "KV_Storage.h"
+#include "HID.h"
+#include "Menu_Handler.h"
+
+// Add your custom function headers here if needed
+// e.g. #include "my_functions.h"
+
+// --- Menu Entry Point ---
+// The following should be your root menu struct.
+// You will call EnterMenu(&${rootMenu}); to start.
+extern Menu ${rootMenu};
+
+// Call this function once at startup to initialize all menus.
+void InitializeAllMenus(void);
+
+#endif // CONFIGURATOR_HEADFILE_H
+`;
+        }
+        
+        function generateMenuContentSource() {
+            if (config.menus.length === 0) return "// No menus defined.";
+
+            let cCode = `#include "Items.h"\n#include <string.h>\n\n`;
+
+            // Forward declarations for functions
+            const functions = new Set();
+            config.menus.forEach(menu => {
+                menu.items.forEach(item => {
+                    if (item.type === 'FUNCTION' && item.value) {
+                        functions.add(item.value);
+                    }
+                });
+            });
+
+            if (functions.size > 0) {
+                cCode += `// --- Forward declarations for custom functions ---\n`;
+                functions.forEach(func => {
+                    cCode += `extern void ${func}(void);\n`;
+                });
+                cCode += `\n`;
+            }
+
+            // Menu struct definitions
+            cCode += `// --- Menu struct definitions ---\n`;
+            config.menus.forEach(menu => {
+                cCode += `Menu ${menu.name};\n`;
+            });
+            cCode += `\n`;
+
+            // Initialization functions
+            cCode += `// --- Menu initialization functions ---\n`;
+            config.menus.forEach(menu => {
+                cCode += `// --- Initialization for ${menu.name} ---\n`;
+                cCode += `void Init_${menu.name}(void) {\n`;
+                cCode += `    strcpy(${menu.name}.MenuTitle, "${menu.name}");\n`;
+                cCode += `    ${menu.name}.ItemCount = ${menu.items.length};\n`;
+                cCode += `    ${menu.name}.CurrentPage = 0;\n`;
+                cCode += `    ${menu.name}.CurrentSelection = 0;\n\n`;
+
+                menu.items.forEach((item, index) => {
+                    cCode += `    // Item: ${item.name}\n`;
+                    cCode += `    strcpy(${menu.name}.Items[${index}].ItemName, "${item.name}");\n`;
+                    cCode += `    ${menu.name}.Items[${index}].Type = ITEM_TYPE_${item.type};\n`;
+                    switch (item.type) {
+                        case 'INT':
+                        case 'FLOAT':
+                        case 'BOOL':
+                            cCode += `    strcpy(${menu.name}.Items[${index}].ItemValue, "${item.value || (item.type === 'BOOL' ? '0' : '0')}");\n\n`;
+                            break;
+                        case 'MENU':
+                            cCode += `    ${menu.name}.Items[${index}].SubMenu = &${item.value};\n\n`;
+                            break;
+                        case 'FUNCTION':
+                            cCode += `    ${menu.name}.Items[${index}].ItemFunction = &${item.value};\n\n`;
+                            break;
+                    }
+                });
+                cCode += `}\n\n`;
+            });
+
+            // Main initializer
+            cCode += `// --- Main initialization function ---\n`;
+            cCode += `void InitializeAllMenus(void) {\n`;
+            config.menus.forEach(menu => {
+                cCode += `    Init_${menu.name}();\n`;
+            });
+            cCode += `}\n`;
+
+            return cCode;
+        }
+
+
+        // --- HELPERS ---
+        function findMenu(id) {
+            return config.menus.find(m => m.id === id);
+        }
+
+        function findItem(menu, id) {
+            return menu.items.find(i => i.id === id);
+        }
+
+        function updateThemeInputs() {
+            themeInputs.maxItems.value = config.theme.maxItems;
+            themeInputs.textColor.value = config.theme.textColor;
+            themeInputs.textSelectedColor.value = config.theme.textSelectedColor;
+            themeInputs.backgroundColor.value = config.theme.backgroundColor;
+            themeInputs.backgroundSelectedColor.value = config.theme.backgroundSelectedColor;
+            themeInputs.titleSeperatorColor.value = config.theme.titleSeperatorColor;
+            themeInputs.changeValueTextColor.value = config.theme.changeValueTextColor;
+            themeInputs.changeValueTextSelectedBitColor.value = config.theme.changeValueTextSelectedBitColor;
+            themeInputs.changeValueTextSelectedBackgroundColor.value = config.theme.changeValueTextSelectedBackgroundColor;
+        }
+
+        function updateConfigFromThemeInputs() {
+            config.theme.maxItems = Number(themeInputs.maxItems.value) || 9;
+            config.theme.textColor = themeInputs.textColor.value || 'RGB565_WHITE';
+            config.theme.textSelectedColor = themeInputs.textSelectedColor.value || 'RGB565_BLUE';
+            config.theme.backgroundColor = themeInputs.backgroundColor.value || 'RGB565_BLACK';
+            config.theme.backgroundSelectedColor = themeInputs.backgroundSelectedColor.value || 'RGB565_GRAY';
+            config.theme.titleSeperatorColor = themeInputs.titleSeperatorColor.value || 'RGB565_GRAY';
+            config.theme.changeValueTextColor = themeInputs.changeValueTextColor.value || 'RGB565_GREEN';
+            config.theme.changeValueTextSelectedBitColor = themeInputs.changeValueTextSelectedBitColor.value || 'RGB565_YELLOW';
+            config.theme.changeValueTextSelectedBackgroundColor = themeInputs.changeValueTextSelectedBackgroundColor.value || 'RGB565_BLUE';
+        }
+
+        // --- START THE APP ---
+        init();
+    });
+    </script>
+
+</body>
+</html>

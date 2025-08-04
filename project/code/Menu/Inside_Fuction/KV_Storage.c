@@ -2,18 +2,6 @@
 #include "zf_common_headfile.h"
 #include <string.h> // 用于 memcpy 和 memset
 
-/*
- * 优化说明:
- * 1. 移除了全局缓存数组 `kv_storage_cache[512*48]`，这是主要的内存优化点，节省了96KB的RAM。
- * 2. 重写了 `kv_storage_read_from_flash` 和 `kv_storage_write_to_flash` 函数。
- * 现在它们直接在 `KV_List` 数组和Flash的底层IO缓冲区之间逐页传输数据，避免了大的中间缓存。
- * 3. 移除了 `kv_parse_data_to_kv_list` 和 `kv_update_cache_from_kv_list`，因为它们只为已删除的缓存服务。
- * 4. 优化了 `set` 和 `get` 函数的内部逻辑，使用静态辅助函数来减少代码重复，并使逻辑更清晰。
- * 5. `kv_storage_format` 现在会根据 `KV_List` 的实际大小计算需要擦除的Flash页数，更具灵活性。
- * 6. 所有对外接口（函数调用方式）保持不变。
- */
-
-
 // 全局键值对列表，这是数据在内存中的主要形式
 KeyValuePair KV_List[MAX_KV_PAIRS] = {0};
 
@@ -214,7 +202,8 @@ bool kv_storage_format(void) {
     
     // 擦除Flash中对应的页
     for (int i = 0; i < num_pages; i++) {
-        flash_erase_page(0, i);
+        memset(flash_union_buffer, 0xFF, FLASH_PAGE_SIZE_BYTES); // 将缓冲区填充为0xFF
+        flash_write_page_from_buffer(0, i, FLASH_PAGE_LENGTH); // 写入缓冲区到Flash
     }
 
     printf("KV存储已格式化。\n");

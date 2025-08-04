@@ -77,46 +77,8 @@ int main(void)
     // 此处编写用户代码 例如外设初始化代码等
     ips200_init(IPS200_TYPE_SPI);                   // IPS200 初始化
     ips200_clear();                    // 清屏
-    
-    // 创建子菜单示例
-    static Menu SettingsMenu = {
-        .MenuTitle = "Settings",
-        .Items = {
-            {"Brightness", "50", ITEM_TYPE_INT, 0, 100, NULL, NULL},
-            {"Volume", "75", ITEM_TYPE_INT, 0, 100, NULL, NULL},
-            {"Auto Save", "1", ITEM_TYPE_BOOL, 0, 1, NULL, NULL},
-            {"Reset Config", "", ITEM_TYPE_FUNCTION, 0, 0, NULL, SystemReset}
-        },
-        .ItemCount = 4,
-        .CurrentPage = 0,
-        .CurrentSelection = 0
-    };
-    
-    Menu MainMenu = {
-        .MenuTitle = "Main Menu",
-        .Items = {
-            {"Speed", "1", ITEM_TYPE_INT, -100, 100, NULL, NULL},
-            {"Xiaomi", "2.33", ITEM_TYPE_FLOAT, 0, 100, NULL, NULL},
-            {"Power On", "1", ITEM_TYPE_BOOL, 0, 1, NULL, NULL},
-            {"Settings", "", ITEM_TYPE_MENU, 0, 0, &SettingsMenu, NULL},
-            {"Test Func1", "", ITEM_TYPE_FUNCTION, 0, 0, NULL, TestFunction1},
-            {"Test Func2", "", ITEM_TYPE_FUNCTION, 0, 0, NULL, TestFunction2},
-            {"Temperature", "25.5", ITEM_TYPE_FLOAT, -50, 100, NULL, NULL},
-            {"Enable WiFi", "0", ITEM_TYPE_BOOL, 0, 1, NULL, NULL},
-            {"HUAWEI", "3.14", ITEM_TYPE_FLOAT, 0, 100, NULL, NULL},
-            {"Item10", "10", ITEM_TYPE_INT, 0, 100, NULL, NULL},
-            {"Debug Mode", "0", ITEM_TYPE_BOOL, 0, 1, NULL, NULL},
-            {"Item12", "12", ITEM_TYPE_INT, 0, 100, NULL, NULL},
-            {"Item13", "13", ITEM_TYPE_INT, 0, 100, NULL, NULL},
-            {"Item14", "14", ITEM_TYPE_INT, 0, 100, NULL, NULL},
-            {"Item15", "15", ITEM_TYPE_INT, 0, 100, NULL, NULL}
-        },
-        .ItemCount = 15,
-        .CurrentPage = 0,
-        .CurrentSelection = 0
-    };
-
-
+    InitializeAllMenus(); // 初始化所有菜单
+    printf("正在初始化菜单...\n");
     EnterMenu(&MainMenu); // 绘制主菜单
     printf("Menu Exited\n");
     // 此处编写用户代码 例如外设初始化代码等
