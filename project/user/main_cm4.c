@@ -46,33 +46,79 @@
 
 // **************************** 代码区域 ****************************
 
+// 示例函数
+void TestFunction1(void)
+{
+    printf("Test Function 1 executed!\n");
+    // 这里可以添加任何你想要执行的代码
+}
+
+void TestFunction2(void)
+{
+    printf("Test Function 2 executed!\n");
+    // 这里可以添加任何你想要执行的代码
+}
+
+void SystemReset(void)
+{
+    printf("System Reset Function called!\n");
+    // 这里可以添加系统重置代码
+}
+
 int main(void)
 {
     clock_init(SYSTEM_CLOCK_160M);      // 时钟配置及系统初始化<务必保留>
     
     debug_init();                       // 调试串口初始化
+    
+    // 初始化KV存储系统
+    kv_storage_init();
+    
     // 此处编写用户代码 例如外设初始化代码等
     ips200_init(IPS200_TYPE_SPI);                   // IPS200 初始化
     ips200_clear();                    // 清屏
+    
+    // 创建子菜单示例
+    static Menu SettingsMenu = {
+        .MenuTitle = "Settings",
+        .Items = {
+            {"Brightness", "50", ITEM_TYPE_INT, 0, 100, NULL, NULL},
+            {"Volume", "75", ITEM_TYPE_INT, 0, 100, NULL, NULL},
+            {"Auto Save", "1", ITEM_TYPE_BOOL, 0, 1, NULL, NULL},
+            {"Reset Config", "", ITEM_TYPE_FUNCTION, 0, 0, NULL, SystemReset}
+        },
+        .ItemCount = 4,
+        .CurrentPage = 0,
+        .CurrentSelection = 0
+    };
+    
     Menu MainMenu = {
-    .MenuTitle = "Main Menu",
-    .Items = {
-        {"Item1", "1", NULL},
-        {"Item2", "3", NULL},
-        {"Item3", "5", NULL},
-        {"Item4", "7.88", NULL},
-        {"Item5", "Value5", NULL},
-        {"Item6", "6", NULL},
-        {"Item7", "7", NULL},
-        {"Item8", "8", NULL}
-    },
-    .ItemCount = 8,
-    .CurrentPage = 0,
-    .CurrentSelection = 0
+        .MenuTitle = "Main Menu",
+        .Items = {
+            {"Speed", "1", ITEM_TYPE_INT, -100, 100, NULL, NULL},
+            {"Xiaomi", "2.33", ITEM_TYPE_FLOAT, 0, 100, NULL, NULL},
+            {"Power On", "1", ITEM_TYPE_BOOL, 0, 1, NULL, NULL},
+            {"Settings", "", ITEM_TYPE_MENU, 0, 0, &SettingsMenu, NULL},
+            {"Test Func1", "", ITEM_TYPE_FUNCTION, 0, 0, NULL, TestFunction1},
+            {"Test Func2", "", ITEM_TYPE_FUNCTION, 0, 0, NULL, TestFunction2},
+            {"Temperature", "25.5", ITEM_TYPE_FLOAT, -50, 100, NULL, NULL},
+            {"Enable WiFi", "0", ITEM_TYPE_BOOL, 0, 1, NULL, NULL},
+            {"HUAWEI", "3.14", ITEM_TYPE_FLOAT, 0, 100, NULL, NULL},
+            {"Item10", "10", ITEM_TYPE_INT, 0, 100, NULL, NULL},
+            {"Debug Mode", "0", ITEM_TYPE_BOOL, 0, 1, NULL, NULL},
+            {"Item12", "12", ITEM_TYPE_INT, 0, 100, NULL, NULL},
+            {"Item13", "13", ITEM_TYPE_INT, 0, 100, NULL, NULL},
+            {"Item14", "14", ITEM_TYPE_INT, 0, 100, NULL, NULL},
+            {"Item15", "15", ITEM_TYPE_INT, 0, 100, NULL, NULL}
+        },
+        .ItemCount = 15,
+        .CurrentPage = 0,
+        .CurrentSelection = 0
     };
 
 
     EnterMenu(&MainMenu); // 绘制主菜单
+    printf("Menu Exited\n");
     // 此处编写用户代码 例如外设初始化代码等
     for(;;)
     {

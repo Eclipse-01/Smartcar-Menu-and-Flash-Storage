@@ -30,15 +30,19 @@ void hid_init(void)
 
 
 }
+static int encoder_accum = 0;
 
 int Get_Encoder_Value(void)
 {
-    // 获取编码器值
-    encoder_data_dir[0] = encoder_get_count(ENCODER1);
+    // 累加编码器的增量，不清零，防止慢速旋转丢步
+    int delta = encoder_get_count(ENCODER1);
+    encoder_accum += delta;
     encoder_clear_count(ENCODER1);
-    encoder_data_dir[1] = encoder_get_count(ENCODER2);
-    encoder_clear_count(ENCODER2);
-    return encoder_data_dir[0] / 3;
+
+    int value = encoder_accum / 50; // 20为灵敏度因子
+    encoder_accum -= value * 50;    // 保留余数，防止丢步
+
+    return value;
 }
 
 int Key_State = 0;

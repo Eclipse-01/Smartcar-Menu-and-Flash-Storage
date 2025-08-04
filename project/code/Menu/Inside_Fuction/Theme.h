@@ -8,4 +8,4 @@
 #define ChangeValueText_Selected_BitColor RGB565_YELLOW
 #define ChangeValueText_Selected_Background_Color RGB565_BLUE
 
-#define MAX_ITEMS_PER_PAGE 8 // 每页最多显示的菜单项数量
+#define MAX_ITEMS_PER_PAGE 9 // 每页最多显示的菜单项数量
