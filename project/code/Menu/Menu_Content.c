@@ -2,6 +2,7 @@
 #include <string.h>
 
 // --- Forward declarations for custom functions ---
+extern void kv_cli(void);
 extern void SystemReset(void);
 
 // --- Menu struct definitions ---
@@ -12,7 +13,7 @@ Menu AppleJuice;
 // --- Initialization for MainMenu ---
 void Init_MainMenu(void) {
     strcpy(MainMenu.MenuTitle, "MainMenu");
-    MainMenu.ItemCount = 4;
+    MainMenu.ItemCount = 5;
     MainMenu.CurrentPage = 0;
     MainMenu.CurrentSelection = 0;
 
@@ -35,6 +36,11 @@ void Init_MainMenu(void) {
     strcpy(MainMenu.Items[3].ItemName, "Apple");
     MainMenu.Items[3].Type = ITEM_TYPE_MENU;
     MainMenu.Items[3].SubMenu = &AppleJuice;
+
+    // Item: Haavk
+    strcpy(MainMenu.Items[4].ItemName, "Haavk");
+    MainMenu.Items[4].Type = ITEM_TYPE_FUNCTION;
+    MainMenu.Items[4].ItemFunction = &kv_cli;
 
 }
 

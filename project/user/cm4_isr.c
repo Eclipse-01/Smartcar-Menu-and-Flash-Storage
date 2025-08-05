@@ -131,7 +131,7 @@ void pit0_ch21_isr()                    // 定时器通道 21 周期中断服务函数
 }
 // **************************** PIT中断函数 ****************************
 
-
+void uart_rx_interrupt_handler (void);
 // **************************** 串口中断函数 ****************************
 // 串口0默认作为调试串口
 void uart0_isr (void)
@@ -139,9 +139,10 @@ void uart0_isr (void)
     if(uart_isr_mask(UART_0))            // 串口0接收中断
     {
         
-#if DEBUG_UART_USE_INTERRUPT             // 如果开启 debug 串口中断
-        debug_interrupr_handler();       // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
-#endif                                   // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
+        uart_rx_interrupt_handler();
+//#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
+//        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
+//#endif                                   // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
       
     }
     else                                 // 串口0发送中断

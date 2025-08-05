@@ -1,7 +1,6 @@
 #include "ComplexGraphics.h"
 #include "Items.h"
 #include "BasicGeos.h"
-#include "Theme.h"
 #include "HID.h"
 #include "zf_common_headfile.h"
 #include <string.h>
@@ -57,8 +56,20 @@ void DrawMenu(const Menu* menu)
     for (int i = start_item; i < end_item; i++) {
         int item_y = 60 + display_index * 24;
         const char* item_name = menu->Items[i].ItemName;
-        const char* item_value = menu->Items[i].ItemValue;
-        int value_x = 210 - strlen(item_value) * 8;
+        
+        // 根据类型处理显示值
+        const char* display_value;
+        char bool_display[6]; // 用于存储 "TRUE" 或 "FALSE"
+        if (menu->Items[i].Type == ITEM_TYPE_BOOL) {
+            // BOOL类型特殊处理：将 "0" 显示为 "FALSE"，"1" 显示为 "TRUE"
+            int bool_val = atoi(menu->Items[i].ItemValue);
+            strcpy(bool_display, bool_val ? "TRUE" : "FALSE");
+            display_value = bool_display;
+        } else {
+            display_value = menu->Items[i].ItemValue;
+        }
+        
+        int value_x = 210 - strlen(display_value) * 8;
 
         if (i == menu->CurrentSelection) {
             // 绘制选中项
@@ -66,12 +77,12 @@ void DrawMenu(const Menu* menu)
             draw_rectangle_filled(0, item_y - 2, 239, 20, Background_Selected_Color); // 高亮背景条
             ips200_show_char(15, item_y, '>');
             ips200_show_string(30, item_y, item_name);
-            ips200_show_string(value_x, item_y, item_value);
+            ips200_show_string(value_x, item_y, display_value);
         } else {
             // 绘制非选中项
             ips200_set_color(TextColor, BackgroundColor);
             ips200_show_string(30, item_y, item_name);
-            ips200_show_string(value_x, item_y, item_value);
+            ips200_show_string(value_x, item_y, display_value);
         }
         display_index++;
     }
@@ -221,11 +232,26 @@ void SetValueComponent_Float(Menu* menu, int item_index)
         // --- 5. 处理输入 ---
         if (encoder_delta != 0) {
             dot_ptr = strchr(data_buffer, '.');
-            int dot_offset = 0;
+            double increment;
             if (dot_ptr != NULL) {
-                dot_offset = (data_buffer + length - 1) - dot_ptr;
+                // 计算当前位相对于小数点的位置
+                int dot_position = dot_ptr - data_buffer;
+                int current_position = length - 1 - bit;
+                
+                if (current_position < dot_position) {
+                    // 整数部分：位数为 (dot_position - current_position - 1)
+                    increment = powerOf10(dot_position - current_position - 1);
+                } else if (current_position > dot_position) {
+                    // 小数部分：位数为 -(current_position - dot_position)
+                    increment = powerOf10(-(current_position - dot_position));
+                } else {
+                    // 不应该编辑小数点本身，跳过
+                    increment = 0;
+                }
+            } else {
+                // 没有小数点，纯整数
+                increment = powerOf10(bit);
             }
-            double increment = powerOf10(bit - dot_offset);
             value += encoder_delta * increment;
         }
 

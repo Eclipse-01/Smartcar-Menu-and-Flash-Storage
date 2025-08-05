@@ -73,7 +73,10 @@ int main(void)
     
     // 初始化KV存储系统
     kv_storage_init();
-    
+
+    // 清空KV存储
+    kv_storage_format();
+
     // 此处编写用户代码 例如外设初始化代码等
     ips200_init(IPS200_TYPE_SPI);                   // IPS200 初始化
     ips200_clear();                    // 清屏

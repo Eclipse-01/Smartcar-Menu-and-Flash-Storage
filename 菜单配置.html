@@ -27,18 +27,6 @@
             opacity: 0.5;
             background: #e0f2fe;
         }
-        .drop-zone {
-            height: 1.5rem;
-            background: #f0f9ff;
-            border: 2px dashed #38bdf8;
-            margin-top: 0.5rem;
-            margin-bottom: 0.5rem;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-        .drop-zone-active {
-            opacity: 1;
-        }
         .custom-input {
             @apply w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition;
         }
@@ -59,6 +47,25 @@
         }
         .btn-icon {
             @apply px-2 py-1 text-sm;
+        }
+        /* Style for the color picker */
+        input[type="color"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 2.5rem;
+            height: 2.5rem;
+            padding: 0;
+            border: none;
+            border-radius: 0.375rem; /* rounded-md */
+            cursor: pointer;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border: 1px solid #d1d5db; /* gray-300 */
+            border-radius: 0.375rem; /* rounded-md */
         }
     </style>
 </head>
@@ -84,45 +91,17 @@
                 <h2 class="text-2xl font-bold text-gray-700 border-b pb-2 mb-4">菜单编辑器</h2>
                 
                 <!-- Theme Settings -->
-                <div class="bg-gray-50 p-4 rounded-lg mb-6">
-                    <h3 class="text-xl font-semibold text-gray-700 mb-3">主题与全局设置 (Theme.h)</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div id="theme-settings-container" class="bg-gray-50 p-4 rounded-lg mb-6">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-3">主题与全局设置</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-5">
                         <div>
                             <label class="block text-sm font-medium text-gray-700">每页最大项目数</label>
                             <input type="number" id="max-items-input" class="custom-input mt-1" value="9">
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">普通文本颜色</label>
-                            <input type="text" id="textcolor-input" class="custom-input mt-1" value="RGB565_WHITE">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">选中时文本颜色</label>
-                            <input type="text" id="textselectedcolor-input" class="custom-input mt-1" value="RGB565_BLUE">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">背景颜色</label>
-                            <input type="text" id="backgroundcolor-input" class="custom-input mt-1" value="RGB565_BLACK">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">选中时背景颜色</label>
-                            <input type="text" id="backgroundselectedcolor-input" class="custom-input mt-1" value="RGB565_GRAY">
-                        </div>
-                         <div>
-                            <label class="block text-sm font-medium text-gray-700">标题分隔线颜色</label>
-                            <input type="text" id="titleseperatorcolor-input" class="custom-input mt-1" value="RGB565_GRAY">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">修改值时文本颜色</label>
-                            <input type="text" id="changevaluetextcolor-input" class="custom-input mt-1" value="RGB565_GREEN">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">修改值时选中位颜色</label>
-                            <input type="text" id="changevaluetextselectedbitcolor-input" class="custom-input mt-1" value="RGB565_YELLOW">
-                        </div>
-                         <div>
-                            <label class="block text-sm font-medium text-gray-700">修改值时选中位背景色</label>
-                            <input type="text" id="changevaluetextselectedbackgroundcolor-input" class="custom-input mt-1" value="RGB565_BLUE">
-                        </div>
+                        <div></div> <!-- Spacer -->
+
+                        <!-- Color pickers will be dynamically generated here -->
+
                     </div>
                 </div>
 
@@ -141,12 +120,8 @@
                         <pre id="code-preview-c" class="bg-gray-900 p-4 rounded-lg h-64 overflow-auto"></pre>
                     </div>
                     <div>
-                        <h3 class="text-lg font-semibold text-green-400 mb-2">Theme.h</h3>
-                        <pre id="code-preview-theme" class="bg-gray-900 p-4 rounded-lg h-48 overflow-auto"></pre>
-                    </div>
-                    <div>
                         <h3 class="text-lg font-semibold text-green-400 mb-2">Configurator_Headfile.h</h3>
-                        <pre id="code-preview-config" class="bg-gray-900 p-4 rounded-lg h-48 overflow-auto"></pre>
+                        <pre id="code-preview-config" class="bg-gray-900 p-4 rounded-lg h-96 overflow-auto"></pre>
                     </div>
                 </div>
             </div>
@@ -161,50 +136,99 @@
             menus: []
         };
 
+        // --- CONSTANTS & HELPERS ---
+        const colorDefineToHex = {
+            'RGB565_WHITE': '#FFFFFF',
+            'RGB565_BLUE': '#0000FF',
+            'RGB565_BLACK': '#000000',
+            'RGB565_GRAY': '#808080',
+            'RGB565_GREEN': '#00FF00',
+            'RGB565_YELLOW': '#FFFF00',
+            'RGB565_RED': '#FF0000',
+        };
+
+        function rgb888toRgb565(hex) {
+            hex = hex.substring(1); // remove #
+            const r8 = parseInt(hex.substring(0, 2), 16);
+            const g8 = parseInt(hex.substring(2, 4), 16);
+            const b8 = parseInt(hex.substring(4, 6), 16);
+            const r5 = (r8 >> 3) & 0x1F;
+            const g6 = (g8 >> 2) & 0x3F;
+            const b5 = (b8 >> 3) & 0x1F;
+            const rgb565 = (r5 << 11) | (g6 << 5) | b5;
+            return '0x' + rgb565.toString(16).toUpperCase().padStart(4, '0');
+        }
+
+        function rgb565toRgb888(rgb565) { // input is a number like 0xFFFF
+            const r5 = (rgb565 >> 11) & 0x1F;
+            const g6 = (rgb565 >> 5) & 0x3F;
+            const b5 = rgb565 & 0x1F;
+            const r8 = (r5 << 3) | (r5 >> 2);
+            const g8 = (g6 << 2) | (g6 >> 4);
+            const b8 = (b5 << 3) | (b5 >> 2);
+            const rHex = r8.toString(16).padStart(2, '0');
+            const gHex = g8.toString(16).padStart(2, '0');
+            const bHex = b8.toString(16).padStart(2, '0');
+            return `#${rHex}${gHex}${bHex}`.toUpperCase();
+        }
+
         // --- DOM ELEMENTS ---
         const menuEditorContainer = document.getElementById('menu-editor-container');
         const addMenuBtn = document.getElementById('add-menu-btn');
         const saveJsonBtn = document.getElementById('save-json-btn');
         const loadJsonInput = document.getElementById('load-json-input');
         const generateCodeBtn = document.getElementById('generate-code-btn');
+        const themeSettingsContainer = document.getElementById('theme-settings-container');
         
         const codePreviewC = document.getElementById('code-preview-c');
-        const codePreviewTheme = document.getElementById('code-preview-theme');
         const codePreviewConfig = document.getElementById('code-preview-config');
-
-        // Theme inputs
-        const themeInputs = {
-            maxItems: document.getElementById('max-items-input'),
-            textColor: document.getElementById('textcolor-input'),
-            textSelectedColor: document.getElementById('textselectedcolor-input'),
-            backgroundColor: document.getElementById('backgroundcolor-input'),
-            backgroundSelectedColor: document.getElementById('backgroundselectedcolor-input'),
-            titleSeperatorColor: document.getElementById('titleseperatorcolor-input'),
-            changeValueTextColor: document.getElementById('changevaluetextcolor-input'),
-            changeValueTextSelectedBitColor: document.getElementById('changevaluetextselectedbitcolor-input'),
-            changeValueTextSelectedBackgroundColor: document.getElementById('changevaluetextselectedbackgroundcolor-input'),
-        };
 
         // --- INITIALIZATION ---
         function init() {
-            // Load default config
+            createColorPickers();
             loadDefaultConfig();
             updateAll();
             attachEventListeners();
+        }
+
+        function createColorPickers() {
+            const colorSettings = [
+                { prop: 'textColor', label: '普通文本颜色' },
+                { prop: 'textSelectedColor', label: '选中时文本颜色' },
+                { prop: 'backgroundColor', label: '背景颜色' },
+                { prop: 'backgroundSelectedColor', label: '选中时背景颜色' },
+                { prop: 'titleSeperatorColor', label: '标题分隔线颜色' },
+                { prop: 'changeValueTextColor', label: '修改值时文本颜色' },
+                { prop: 'changeValueTextSelectedBitColor', label: '修改值时选中位颜色' },
+                { prop: 'changeValueTextSelectedBackgroundColor', label: '修改值时选中位背景色' },
+            ];
+
+            const container = themeSettingsContainer.querySelector('.grid');
+            colorSettings.forEach(setting => {
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <label class="block text-sm font-medium text-gray-700">${setting.label}</label>
+                    <div class="flex items-center gap-2 mt-1">
+                        <input type="color" data-picker-for="${setting.prop}" class="p-1 h-10 w-10 block bg-white border border-gray-300 rounded-md cursor-pointer">
+                        <input type="text" data-theme-prop="${setting.prop}" class="custom-input">
+                    </div>
+                `;
+                container.appendChild(div);
+            });
         }
 
         function loadDefaultConfig() {
             config = {
                 theme: {
                     maxItems: 9,
-                    textColor: 'RGB565_WHITE',
-                    textSelectedColor: 'RGB565_BLUE',
-                    backgroundColor: 'RGB565_BLACK',
-                    backgroundSelectedColor: 'RGB565_GRAY',
-                    titleSeperatorColor: 'RGB565_GRAY',
-                    changeValueTextColor: 'RGB565_GREEN',
-                    changeValueTextSelectedBitColor: 'RGB565_YELLOW',
-                    changeValueTextSelectedBackgroundColor: 'RGB565_BLUE'
+                    textColor: '0xE71C', // RGB565 for #E0E0E0
+                    textSelectedColor: '0xF79F', // RGB565 for #F0FFFF
+                    backgroundColor: '0x08D5', // RGB565 for #0B192E
+                    backgroundSelectedColor: '0x1A51', // RGB565 for #1E4A8B
+                    titleSeperatorColor: '0x2A2D', // RGB565 for #2A456B
+                    changeValueTextColor: '0xF79F', // RGB565 for #F0FFFF
+                    changeValueTextSelectedBitColor: '0xFCB5', // RGB565 for #FF8C69
+                    changeValueTextSelectedBackgroundColor: '0xE71C' // RGB565 for #E0E0E0
                 },
                 menus: [
                     {
@@ -226,12 +250,35 @@
                     }
                 ]
             };
-            updateThemeInputs();
+            updateThemeUI();
         }
         
         function updateAll() {
             renderMenuEditor();
             generateAndDisplayCode();
+        }
+
+        function updateThemeUI() {
+            document.getElementById('max-items-input').value = config.theme.maxItems;
+            for (const prop in config.theme) {
+                if (prop === 'maxItems') continue;
+
+                const value = config.theme[prop];
+                const textInput = document.querySelector(`[data-theme-prop="${prop}"]`);
+                const pickerInput = document.querySelector(`[data-picker-for="${prop}"]`);
+
+                if (textInput) textInput.value = value;
+                if (pickerInput) {
+                    const hex = colorDefineToHex[value.toUpperCase()];
+                    if (hex) {
+                        pickerInput.value = hex;
+                    } else if (value.startsWith('0x')) {
+                        pickerInput.value = rgb565toRgb888(parseInt(value, 16));
+                    } else {
+                        pickerInput.value = '#000000'; // Default
+                    }
+                }
+            }
         }
 
         // --- RENDER UI ---
@@ -241,7 +288,7 @@
                 const menuElement = createMenuElement(menu);
                 menuEditorContainer.appendChild(menuElement);
             });
-            addDragAndDropListeners();
+            // Drag and drop is not implemented in this version for simplicity
         }
 
         function createMenuElement(menu) {
@@ -305,32 +352,49 @@
             saveJsonBtn.addEventListener('click', handleSaveJson);
             loadJsonInput.addEventListener('change', handleLoadJson);
             generateCodeBtn.addEventListener('click', handleGenerateCode);
-
             menuEditorContainer.addEventListener('input', handleEditorInput);
             menuEditorContainer.addEventListener('click', handleEditorClick);
             
-            Object.values(themeInputs).forEach(input => {
-                input.addEventListener('input', () => {
-                    updateConfigFromThemeInputs();
-                    generateAndDisplayCode();
-                });
+            themeSettingsContainer.addEventListener('input', (e) => {
+                const target = e.target;
+                const themeProp = target.dataset.themeProp;
+                const pickerFor = target.dataset.pickerFor;
+
+                if (themeProp) { // Text input for color changed
+                    config.theme[themeProp] = target.value;
+                    const picker = document.querySelector(`[data-picker-for="${themeProp}"]`);
+                    if (picker) {
+                        const hex = colorDefineToHex[target.value.toUpperCase()];
+                        if (hex) {
+                            picker.value = hex;
+                        } else if (target.value.startsWith('0x')) {
+                            picker.value = rgb565toRgb888(parseInt(target.value, 16));
+                        }
+                    }
+                } else if (pickerFor) { // Color picker changed
+                    const textInput = document.querySelector(`[data-theme-prop="${pickerFor}"]`);
+                    if (textInput) {
+                        const rgb565String = rgb888toRgb565(target.value);
+                        textInput.value = rgb565String;
+                        config.theme[pickerFor] = rgb565String;
+                    }
+                } else if (target.id === 'max-items-input') {
+                    config.theme.maxItems = Number(target.value) || 9;
+                }
+                
+                generateAndDisplayCode();
             });
         }
 
         function handleAddMenu() {
             const newMenuName = `NewMenu${config.menus.length + 1}`;
-            config.menus.push({
-                id: Date.now(),
-                name: newMenuName,
-                items: []
-            });
+            config.menus.push({ id: Date.now(), name: newMenuName, items: [] });
             updateAll();
         }
 
         function handleEditorClick(e) {
             const target = e.target.closest('[data-action]');
             if (!target) return;
-
             const action = target.dataset.action;
             const menuElement = target.closest('[data-menu-id]');
             const itemElement = target.closest('[data-item-id]');
@@ -357,129 +421,47 @@
             const target = e.target;
             const menuElement = target.closest('[data-menu-id]');
             const itemElement = target.closest('[data-item-id]');
-            
             if (!menuElement) return;
             const menuId = Number(menuElement.dataset.menuId);
             const menu = findMenu(menuId);
+            let needsFullUIRefresh = false;
 
             if (target.dataset.action === 'rename-menu') {
                 const oldName = menu.name;
-                const newName = target.value.replace(/[^a-zA-Z0-9_]/g, ''); // Sanitize
+                const newName = target.value.replace(/[^a-zA-Z0-9_]/g, ''); 
                 target.value = newName;
                 menu.name = newName;
-                // Update any links to this menu
-                config.menus.forEach(m => {
-                    m.items.forEach(i => {
+                if (oldName !== newName && oldName) {
+                    config.menus.forEach(m => m.items.forEach(i => {
                         if (i.type === 'MENU' && i.value === oldName) {
                             i.value = newName;
+                            needsFullUIRefresh = true;
                         }
-                    });
-                });
-
+                    }));
+                }
             } else if (itemElement) {
                 const itemId = Number(itemElement.dataset.itemId);
                 const item = findItem(menu, itemId);
                 const prop = target.dataset.prop;
-                
                 if (prop) {
+                    const oldValue = item[prop];
                     item[prop] = target.value;
-                    if (prop === 'type') {
-                        // Reset value when type changes
-                        item.value = item.type === 'BOOL' ? '0' : '';
+                    if (prop === 'type' && oldValue !== target.value) {
+                        item.value = target.value === 'BOOL' ? '0' : '';
+                        needsFullUIRefresh = true;
                     }
                 }
             }
-            updateAll();
+            
+            if (needsFullUIRefresh) {
+                updateAll();
+            } else {
+                generateAndDisplayCode();
+            }
         }
         
-        // --- DRAG AND DROP ---
-        function addDragAndDropListeners() {
-            const draggables = document.querySelectorAll('.draggable');
-            draggables.forEach(draggable => {
-                draggable.addEventListener('dragstart', (e) => {
-                    const element = e.target.closest('[data-menu-id], [data-item-id]');
-                    element.classList.add('dragging');
-                    e.dataTransfer.effectAllowed = 'move';
-                    if (element.dataset.itemId) {
-                        e.dataTransfer.setData('text/plain', `item:${element.dataset.itemId}`);
-                    } else {
-                        e.dataTransfer.setData('text/plain', `menu:${element.dataset.menuId}`);
-                    }
-                });
-
-                draggable.addEventListener('dragend', (e) => {
-                    const element = e.target.closest('[data-menu-id], [data-item-id]');
-                    element.classList.remove('dragging');
-                    document.querySelectorAll('.drop-zone-active').forEach(dz => dz.classList.remove('drop-zone-active'));
-                });
-            });
-
-            const containers = document.querySelectorAll('.items-container, #menu-editor-container');
-            containers.forEach(container => {
-                container.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    const dropZone = e.target.closest('.drop-zone');
-                    if(dropZone) {
-                       document.querySelectorAll('.drop-zone-active').forEach(dz => dz.classList.remove('drop-zone-active'));
-                       dropZone.classList.add('drop-zone-active');
-                    }
-                });
-                
-                container.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const dropZone = e.target.closest('.drop-zone');
-                    if (!dropZone) return;
-
-                    const [type, idStr] = e.dataTransfer.getData('text/plain').split(':');
-                    const id = Number(idStr);
-                    const targetMenuId = Number(dropZone.closest('[data-menu-id]')?.dataset.menuId);
-                    const afterItemId = Number(dropZone.dataset.afterItemId);
-
-                    if (type === 'item') {
-                        let sourceMenu, item, sourceIndex;
-                        for (const m of config.menus) {
-                            const idx = m.items.findIndex(i => i.id === id);
-                            if (idx !== -1) {
-                                sourceMenu = m;
-                                item = m.items[idx];
-                                sourceIndex = idx;
-                                break;
-                            }
-                        }
-                        
-                        if (!item) return;
-
-                        const targetMenu = findMenu(targetMenuId);
-                        if (!targetMenu) return;
-
-                        // Remove from source
-                        sourceMenu.items.splice(sourceIndex, 1);
-                        
-                        // Add to target
-                        const targetIndex = afterItemId === 0 ? 0 : targetMenu.items.findIndex(i => i.id === afterItemId) + 1;
-                        targetMenu.items.splice(targetIndex, 0, item);
-
-                    } else if (type === 'menu') {
-                         const menuToMove = findMenu(id);
-                         if (!menuToMove) return;
-                         
-                         const sourceIndex = config.menus.findIndex(m => m.id === id);
-                         config.menus.splice(sourceIndex, 1);
-                         
-                         const targetIndex = afterItemId === 0 ? 0 : config.menus.findIndex(m => m.id === afterItemId) + 1;
-                         config.menus.splice(targetIndex, 0, menuToMove);
-                    }
-                    
-                    updateAll();
-                });
-            });
-        }
-
-
         // --- DATA PERSISTENCE ---
         function handleSaveJson() {
-            updateConfigFromThemeInputs();
             const jsonString = JSON.stringify(config, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -495,14 +477,13 @@
         function handleLoadJson(event) {
             const file = event.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
                     const loadedConfig = JSON.parse(e.target.result);
                     if (loadedConfig.theme && loadedConfig.menus) {
                         config = loadedConfig;
-                        updateThemeInputs();
+                        updateThemeUI();
                         updateAll();
                     } else {
                         alert('无效的配置文件格式。');
@@ -513,7 +494,6 @@
                 }
             };
             reader.readAsText(file);
-            // Reset input so the same file can be loaded again
             event.target.value = '';
         }
 
@@ -521,9 +501,7 @@
         function handleGenerateCode() {
             const zip = new JSZip();
             zip.file("Menu_Content.c", generateMenuContentSource());
-            zip.file("Theme.h", generateThemeSource());
             zip.file("Configurator_Headfile.h", generateConfiguratorHeadfileSource());
-
             zip.generateAsync({ type: "blob" }).then(function(content) {
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(content);
@@ -535,37 +513,26 @@
         }
         
         function generateAndDisplayCode() {
-            updateConfigFromThemeInputs();
             codePreviewC.textContent = generateMenuContentSource();
-            codePreviewTheme.textContent = generateThemeSource();
             codePreviewConfig.textContent = generateConfiguratorHeadfileSource();
-        }
-
-        function generateThemeSource() {
-            const t = config.theme;
-            return `// Generated by Menu Configurator
-
-#ifndef THEME_H
-#define THEME_H
-
-#include "zf_common_headfile.h"
-
-#define TextColor ${t.textColor}
-#define Text_Selected_Color ${t.textSelectedColor}
-#define BackgroundColor ${t.backgroundColor}
-#define Background_Selected_Color ${t.backgroundSelectedColor}
-#define TitleSeperatorColor ${t.titleSeperatorColor}
-#define ChangeValueTextColor ${t.changeValueTextColor}
-#define ChangeValueText_Selected_BitColor ${t.changeValueTextSelectedBitColor}
-#define ChangeValueText_Selected_Background_Color ${t.changeValueTextSelectedBackgroundColor}
-#define MAX_ITEMS_PER_PAGE ${t.maxItems}
-
-#endif // THEME_H
-`;
         }
 
         function generateConfiguratorHeadfileSource() {
             const rootMenu = config.menus.length > 0 ? config.menus[0].name : 'MainMenu';
+            const t = config.theme;
+            const themeDefines = `
+// --- Theme Settings ---
+#define TextColor                           ${t.textColor}
+#define Text_Selected_Color                 ${t.textSelectedColor}
+#define BackgroundColor                     ${t.backgroundColor}
+#define Background_Selected_Color           ${t.backgroundSelectedColor}
+#define TitleSeperatorColor                 ${t.titleSeperatorColor}
+#define ChangeValueTextColor                ${t.changeValueTextColor}
+#define ChangeValueText_Selected_BitColor   ${t.changeValueTextSelectedBitColor}
+#define ChangeValueText_Selected_Background_Color ${t.changeValueTextSelectedBackgroundColor}
+#define MAX_ITEMS_PER_PAGE                  ${t.maxItems}
+`;
+
             return `// Generated by Menu Configurator
 #ifndef CONFIGURATOR_HEADFILE_H
 #define CONFIGURATOR_HEADFILE_H
@@ -573,14 +540,13 @@
 #include "zf_common_headfile.h"
 #include "zf_device_ips200.h"
 #include "UserConfig.h"
-#include "Theme.h"
 #include "BasicGeos.h"
 #include "ComplexGraphics.h"
 #include "Items.h"
 #include "KV_Storage.h"
 #include "HID.h"
 #include "Menu_Handler.h"
-
+${themeDefines}
 // Add your custom function headers here if needed
 // e.g. #include "my_functions.h"
 
@@ -598,35 +564,21 @@ void InitializeAllMenus(void);
         
         function generateMenuContentSource() {
             if (config.menus.length === 0) return "// No menus defined.";
-
-            let cCode = `#include "Items.h"\n#include <string.h>\n\n`;
-
-            // Forward declarations for functions
+            let cCode = `#include "Items.h"\n#include "Configurator_Headfile.h"\n#include <string.h>\n\n`;
             const functions = new Set();
             config.menus.forEach(menu => {
                 menu.items.forEach(item => {
-                    if (item.type === 'FUNCTION' && item.value) {
-                        functions.add(item.value);
-                    }
+                    if (item.type === 'FUNCTION' && item.value) functions.add(item.value);
                 });
             });
-
             if (functions.size > 0) {
                 cCode += `// --- Forward declarations for custom functions ---\n`;
-                functions.forEach(func => {
-                    cCode += `extern void ${func}(void);\n`;
-                });
+                functions.forEach(func => cCode += `extern void ${func}(void);\n`);
                 cCode += `\n`;
             }
-
-            // Menu struct definitions
             cCode += `// --- Menu struct definitions ---\n`;
-            config.menus.forEach(menu => {
-                cCode += `Menu ${menu.name};\n`;
-            });
+            config.menus.forEach(menu => cCode += `Menu ${menu.name};\n`);
             cCode += `\n`;
-
-            // Initialization functions
             cCode += `// --- Menu initialization functions ---\n`;
             config.menus.forEach(menu => {
                 cCode += `// --- Initialization for ${menu.name} ---\n`;
@@ -635,15 +587,12 @@ void InitializeAllMenus(void);
                 cCode += `    ${menu.name}.ItemCount = ${menu.items.length};\n`;
                 cCode += `    ${menu.name}.CurrentPage = 0;\n`;
                 cCode += `    ${menu.name}.CurrentSelection = 0;\n\n`;
-
                 menu.items.forEach((item, index) => {
                     cCode += `    // Item: ${item.name}\n`;
                     cCode += `    strcpy(${menu.name}.Items[${index}].ItemName, "${item.name}");\n`;
                     cCode += `    ${menu.name}.Items[${index}].Type = ITEM_TYPE_${item.type};\n`;
                     switch (item.type) {
-                        case 'INT':
-                        case 'FLOAT':
-                        case 'BOOL':
+                        case 'INT': case 'FLOAT': case 'BOOL':
                             cCode += `    strcpy(${menu.name}.Items[${index}].ItemValue, "${item.value || (item.type === 'BOOL' ? '0' : '0')}");\n\n`;
                             break;
                         case 'MENU':
@@ -656,51 +605,16 @@ void InitializeAllMenus(void);
                 });
                 cCode += `}\n\n`;
             });
-
-            // Main initializer
             cCode += `// --- Main initialization function ---\n`;
             cCode += `void InitializeAllMenus(void) {\n`;
-            config.menus.forEach(menu => {
-                cCode += `    Init_${menu.name}();\n`;
-            });
+            config.menus.forEach(menu => cCode += `    Init_${menu.name}();\n`);
             cCode += `}\n`;
-
             return cCode;
         }
 
-
         // --- HELPERS ---
-        function findMenu(id) {
-            return config.menus.find(m => m.id === id);
-        }
-
-        function findItem(menu, id) {
-            return menu.items.find(i => i.id === id);
-        }
-
-        function updateThemeInputs() {
-            themeInputs.maxItems.value = config.theme.maxItems;
-            themeInputs.textColor.value = config.theme.textColor;
-            themeInputs.textSelectedColor.value = config.theme.textSelectedColor;
-            themeInputs.backgroundColor.value = config.theme.backgroundColor;
-            themeInputs.backgroundSelectedColor.value = config.theme.backgroundSelectedColor;
-            themeInputs.titleSeperatorColor.value = config.theme.titleSeperatorColor;
-            themeInputs.changeValueTextColor.value = config.theme.changeValueTextColor;
-            themeInputs.changeValueTextSelectedBitColor.value = config.theme.changeValueTextSelectedBitColor;
-            themeInputs.changeValueTextSelectedBackgroundColor.value = config.theme.changeValueTextSelectedBackgroundColor;
-        }
-
-        function updateConfigFromThemeInputs() {
-            config.theme.maxItems = Number(themeInputs.maxItems.value) || 9;
-            config.theme.textColor = themeInputs.textColor.value || 'RGB565_WHITE';
-            config.theme.textSelectedColor = themeInputs.textSelectedColor.value || 'RGB565_BLUE';
-            config.theme.backgroundColor = themeInputs.backgroundColor.value || 'RGB565_BLACK';
-            config.theme.backgroundSelectedColor = themeInputs.backgroundSelectedColor.value || 'RGB565_GRAY';
-            config.theme.titleSeperatorColor = themeInputs.titleSeperatorColor.value || 'RGB565_GRAY';
-            config.theme.changeValueTextColor = themeInputs.changeValueTextColor.value || 'RGB565_GREEN';
-            config.theme.changeValueTextSelectedBitColor = themeInputs.changeValueTextSelectedBitColor.value || 'RGB565_YELLOW';
-            config.theme.changeValueTextSelectedBackgroundColor = themeInputs.changeValueTextSelectedBackgroundColor.value || 'RGB565_BLUE';
-        }
+        function findMenu(id) { return config.menus.find(m => m.id === id); }
+        function findItem(menu, id) { return menu.items.find(i => i.id === id); }
 
         // --- START THE APP ---
         init();

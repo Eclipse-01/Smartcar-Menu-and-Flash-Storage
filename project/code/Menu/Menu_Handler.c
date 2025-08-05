@@ -21,11 +21,8 @@ void EnterMenu(Menu *menu)
     
     // 如果是最上级菜单，从KV存储同步数据到菜单
     if (menu_depth == 1) {
-        printf("正在从Flash加载设置数据...\n");
         kv_load_data(); // 从Flash加载数据
-        printf("Flash数据加载完成，开始同步到菜单...\n");
         sync_kv_storage_to_menu_recursive(menu); // 递归同步所有子菜单
-        printf("Flash数据加载完成\n");
     }
     
     // 进入菜单时的初始化操作
@@ -38,7 +35,6 @@ void EnterMenu(Menu *menu)
             int EncoderValue = Get_Encoder_Value() / 30;
         if (EncoderValue != 0) {
             // 处理编码器旋转
-            printf("Encoder Value: %d\n", EncoderValue); // 调试输出编码器值
             menu->CurrentSelection += EncoderValue;
             if (menu->CurrentSelection < 0) {
                 menu->CurrentSelection = 0; // 限制最小值
@@ -101,16 +97,13 @@ void EnterMenu(Menu *menu)
             if (menu_depth == 1) {
                 if (show_save_confirm_dialog()) {
                     // 用户选择保存
-                    printf("正在保存设置到Flash...\n");
                     sync_menu_to_kv_storage(menu);
                     kv_save_data(); // 保存到Flash
-                    printf("设置保存完成\n");
                     ips200_full(BackgroundColor);
                     ips200_set_color(TextColor, BackgroundColor);
                     ips200_show_string(80, 120, "Settings Saved!");
                     system_delay_ms(1000);
                 } else {
-                    printf("用户选择不保存设置\n");
                 }
             }
             
@@ -119,9 +112,7 @@ void EnterMenu(Menu *menu)
             ips200_clear(); // 清屏
             return; // 退出函数
         }
-        
-        printf("Current Selection: %d\n", menu->CurrentSelection); // 调试输出当前选中项
-        printf("Button State: %d\n", Read_Buttons()); // 调试输出按键状态  
+    
     }
 }
 
@@ -202,15 +193,12 @@ static void sync_menu_to_kv_storage(const Menu* menu)
         if (item->Type == ITEM_TYPE_INT) {
             int value = atoi(item->ItemValue);
             kv_storage_set_int(item->ItemName, value);
-            printf("保存INT: %s = %d\n", item->ItemName, value);
         } else if (item->Type == ITEM_TYPE_FLOAT) {
             float value = atof(item->ItemValue);
             kv_storage_set_float(item->ItemName, value);
-            printf("保存FLOAT: %s = %.3f\n", item->ItemName, value);
         } else if (item->Type == ITEM_TYPE_BOOL) {
             int value = atoi(item->ItemValue);
             kv_storage_set_int(item->ItemName, value);
-            printf("保存BOOL: %s = %d\n", item->ItemName, value);
         } else if (item->Type == ITEM_TYPE_MENU && item->SubMenu != NULL) {
             // 递归处理子菜单，但不保存子菜单本身
             sync_menu_to_kv_storage(item->SubMenu);
@@ -234,13 +222,11 @@ static void sync_kv_storage_to_menu(Menu* menu)
             int value;
             if (kv_storage_get_int(item->ItemName, &value)) {
                 sprintf(item->ItemValue, "%d", value);
-                printf("加载INT/BOOL: %s = %d\n", item->ItemName, value);
             }
         } else if (item->Type == ITEM_TYPE_FLOAT) {
             float value;
             if (kv_storage_get_float(item->ItemName, &value)) {
                 sprintf(item->ItemValue, "%.3f", value);
-                printf("加载FLOAT: %s = %.3f\n", item->ItemName, value);
             }
         }
     }
@@ -262,13 +248,11 @@ static void sync_kv_storage_to_menu_recursive(Menu* menu)
             int value;
             if (kv_storage_get_int(item->ItemName, &value)) {
                 sprintf(item->ItemValue, "%d", value);
-                printf("加载INT/BOOL: %s = %d\n", item->ItemName, value);
             }
         } else if (item->Type == ITEM_TYPE_FLOAT) {
             float value;
             if (kv_storage_get_float(item->ItemName, &value)) {
                 sprintf(item->ItemValue, "%.3f", value);
-                printf("加载FLOAT: %s = %.3f\n", item->ItemName, value);
             }
         } else if (item->Type == ITEM_TYPE_MENU && item->SubMenu != NULL) {
             // 递归处理子菜单

@@ -30,5 +30,5 @@ bool kv_storage_get_float(const char *key, float *value);
 bool kv_storage_remove(const char *key);
 bool kv_storage_format(void);
 bool kv_update_cache_from_kv_list(void);
-
+void kv_cli(void);
 #endif // KV_STORAGE_H
