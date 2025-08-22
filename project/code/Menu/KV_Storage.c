@@ -242,6 +242,16 @@ char command_buffer[128];                                                       
 uint8 command_index = 0;                                                        // 命令索引
 bool command_ready = false;                                                     // 命令是否准备就绪
 
+// 命令历史相关变量
+#define MAX_HISTORY 10
+char command_history[MAX_HISTORY][128];                                         // 命令历史缓冲区
+uint8 history_count = 0;                                                        // 历史命令数量
+uint8 history_index = 0;                                                        // 当前历史索引
+bool in_history_mode = false;                                                   // 是否在历史模式中
+
+// 转义序列处理状态
+uint8 escape_state = 0;  // 0=normal, 1=ESC, 2=ESC[
+
 // 函数声明
 void process_command(char* cmd);
 void show_all_kv_pairs(void);
@@ -250,6 +260,12 @@ void delete_key(char* key);
 void format_flash(void);
 void show_help(void);
 void parse_set_command(char* cmd);
+void show_status(void);
+void show_version(void);
+void clear_screen(void);
+char* complete_command(char* partial);
+void add_to_history(char* cmd);
+void show_history(void);
 
 void kv_cli(void)
 {
@@ -261,12 +277,12 @@ void kv_cli(void)
     timer_init(TC_TIME2_CH0, TIMER_MS);                                    // 初始化计时器 TC_TIME2_CH0 为毫秒计时模式
     timer_start(TC_TIME2_CH0);                                       // 启动计时器 TC_TIME2_CH0
     // 显示欢迎信息和帮助
-    uart_write_string(UART_INDEX, "\r\n===========================================\r\n");
-    uart_write_string(UART_INDEX, "    Flash KV Storage Manage CLI v1.0\r\n");
-    uart_write_string(UART_INDEX, "===========================================\r\n");
-    uart_write_string(UART_INDEX, "Type 'help' to see available commands\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;36m===========================================\033[0m\r\n");
+    uart_write_string(UART_INDEX, "\033[1;36m    Flash KV Storage Manage CLI v2.0\033[0m\r\n");
+    uart_write_string(UART_INDEX, "\033[1;36m===========================================\033[0m\r\n");
+    uart_write_string(UART_INDEX, "Type '\033[1;33mhelp\033[0m' to see available commands\r\n");
     show_help();
-    uart_write_string(UART_INDEX, "\r\nKV> ");
+    uart_write_string(UART_INDEX, "\r\n\033[1;32mKV>\033[0m ");
     
     // 初始化命令缓冲区
     memset(command_buffer, 0, sizeof(command_buffer));
@@ -309,6 +325,29 @@ void kv_cli(void)
                         uart_write_string(UART_INDEX, "\b \b");  // 回显退格
                     }
                 }
+                else if(c == '\t')  // TAB 自动完成
+                {
+                    command_buffer[command_index] = '\0';  // 确保字符串结束
+                    char* completion = complete_command(command_buffer);
+                    if(completion != NULL)
+                    {
+                        // 清除当前输入
+                        for(int j = 0; j < command_index; j++)
+                        {
+                            uart_write_string(UART_INDEX, "\b \b");
+                        }
+                        
+                        // 输出完整命令
+                        uart_write_string(UART_INDEX, completion);
+                        strcpy(command_buffer, completion);
+                        command_index = strlen(completion);
+                    }
+                    else
+                    {
+                        // 没有匹配或多个匹配，发出提示音
+                        uart_write_byte(UART_INDEX, 7);  // BEL 字符
+                    }
+                }
                 else if(command_index < sizeof(command_buffer) - 1)
                 {
                     command_buffer[command_index++] = c;
@@ -321,16 +360,23 @@ void kv_cli(void)
         if(command_ready)
         {
             uart_write_string(UART_INDEX, "\r\n");
+            
+            // 添加到历史记录 (非空命令且非exit命令)
+            if(strlen(command_buffer) > 0 && strncmp(command_buffer, "exit", 4) != 0)
+            {
+                add_to_history(command_buffer);
+            }
+            
             // 检查是否为退出命令
             if(strncmp(command_buffer, "exit", 4) == 0)
             {
-                uart_write_string(UART_INDEX, "Exiting CLI...\r\n");
+                uart_write_string(UART_INDEX, "\033[1;36mExiting CLI...\033[0m\r\n");
                 exit_cli = true;
             }
             else
             {
                 process_command(command_buffer);
-                uart_write_string(UART_INDEX, "\r\nKV> ");
+                uart_write_string(UART_INDEX, "\r\n\033[1;32mKV>\033[0m ");
             }
             
             // 重置命令缓冲区
@@ -368,21 +414,29 @@ void uart_rx_interrupt_handler (void)
 //-------------------------------------------------------------------------------------------------------------------
 void show_help(void)
 {
-    uart_write_string(UART_INDEX, "Supported commands:\r\n");
-    uart_write_string(UART_INDEX, "  list         - Show all key-value pairs\r\n");
-    uart_write_string(UART_INDEX, "  find <key>   - Find a specific key\r\n");
-    uart_write_string(UART_INDEX, "  delete <key> - Delete a specific key-value pair\r\n");
-    uart_write_string(UART_INDEX, "  set <key> <value> - Set a key-value pair (auto-detect type)\r\n");
-    uart_write_string(UART_INDEX, "  format       - Format Flash storage\r\n");
-    uart_write_string(UART_INDEX, "  save         - Save data to Flash\r\n");
-    uart_write_string(UART_INDEX, "  load         - Load data from Flash\r\n");
-    uart_write_string(UART_INDEX, "  help         - Show this help information\r\n");
-    uart_write_string(UART_INDEX, "  exit         - Exit the CLI\r\n");
-    uart_write_string(UART_INDEX, "\r\n");
-    uart_write_string(UART_INDEX, "For first time use, please format the Flash storage using 'format' command.\r\n");
-    uart_write_string(UART_INDEX, "After you set data, you can save it to Flash using 'save' command.\r\n");
-    uart_write_string(UART_INDEX, "We do not provide any auto save function.\r\n");
-    uart_write_string(UART_INDEX, "For troubleshooting, please contact https://github.com/Eclipse-01/ \r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;36m========== KV Storage CLI Commands ==========\033[0m\r\n");
+    uart_write_string(UART_INDEX, "\033[1;32mData Management:\033[0m\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mlist\033[0m (ls)      - Show all key-value pairs\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mfind\033[0m <key>    - Find a specific key\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mset\033[0m <key> <val> - Set a key-value pair (auto-detect type)\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mdelete\033[0m (rm) <key> - Delete a specific key-value pair\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;32mStorage Operations:\033[0m\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33msave\033[0m         - Save data to Flash\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mload\033[0m         - Load data from Flash\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mformat\033[0m       - Format Flash storage\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;32mUtility Commands:\033[0m\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mstatus\033[0m       - Show storage statistics\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mhistory\033[0m      - Show command history\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mclear\033[0m        - Clear screen\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mversion\033[0m      - Show version information\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mhelp\033[0m (h, ?)  - Show this help information\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mexit\033[0m (quit)  - Exit the CLI\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;34mTips:\033[0m\r\n");
+    uart_write_string(UART_INDEX, "  • Use TAB for command completion\r\n");
+    uart_write_string(UART_INDEX, "  • Aliases are shown in parentheses\r\n");
+    uart_write_string(UART_INDEX, "  • First time? Run 'format' then 'status'\r\n");
+    uart_write_string(UART_INDEX, "  • Remember to 'save' after making changes\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;35mSupport:\033[0m https://github.com/Eclipse-01/\r\n");
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -396,7 +450,8 @@ void process_command(char* cmd)
 
     if(strlen(cmd) == 0) return;
 
-    if(strncmp(cmd, "list", 4) == 0)
+    // Main commands and aliases
+    if(strncmp(cmd, "list", 4) == 0 || strncmp(cmd, "ls", 2) == 0)
     {
         show_all_kv_pairs();
     }
@@ -404,9 +459,12 @@ void process_command(char* cmd)
     {
         find_key(cmd + 5);
     }
-    else if(strncmp(cmd, "delete ", 7) == 0)
+    else if(strncmp(cmd, "delete ", 7) == 0 || strncmp(cmd, "rm ", 3) == 0)
     {
-        delete_key(cmd + 7);
+        if(strncmp(cmd, "delete ", 7) == 0)
+            delete_key(cmd + 7);
+        else
+            delete_key(cmd + 3);
     }
     else if(strncmp(cmd, "set ", 4) == 0)
     {
@@ -418,26 +476,41 @@ void process_command(char* cmd)
     }
     else if(strncmp(cmd, "save", 4) == 0)
     {
-        uart_write_string(UART_INDEX, "Saving data to Flash...\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mSaving data to Flash...\033[0m\r\n");
         kv_save_data();
-        uart_write_string(UART_INDEX, "Data saved to Flash\r\n");
+        uart_write_string(UART_INDEX, "\033[1;32mData saved to Flash successfully\033[0m\r\n");
     }
     else if(strncmp(cmd, "load", 4) == 0)
     {
         kv_load_data();
-        uart_write_string(UART_INDEX, "Data loaded from Flash\r\n");
+        uart_write_string(UART_INDEX, "\033[1;32mData loaded from Flash successfully\033[0m\r\n");
     }
-    else if(strncmp(cmd, "help", 4) == 0)
+    else if(strncmp(cmd, "help", 4) == 0 || strcmp(cmd, "h") == 0 || strcmp(cmd, "?") == 0)
     {
         show_help();
     }
-    else if(strncmp(cmd, "exit", 4) == 0)
+    else if(strncmp(cmd, "status", 6) == 0)
     {
-        uart_write_string(UART_INDEX, "Exiting CLI...\r\n");
+        show_status();
+    }
+    else if(strncmp(cmd, "version", 7) == 0)
+    {
+        show_version();
+    }
+    else if(strncmp(cmd, "clear", 5) == 0)
+    {
+        clear_screen();
+    }
+    else if(strncmp(cmd, "history", 7) == 0)
+    {
+        show_history();
+    }
+    else if(strncmp(cmd, "exit", 4) == 0 || strncmp(cmd, "quit", 4) == 0)
+    {
+        uart_write_string(UART_INDEX, "\033[1;36mExiting CLI...\033[0m\r\n");
         return;
     }
     else if(strcmp(cmd, "haavk") == 0 || strcmp(cmd, "HAAVK") == 0)
-
     {
         const char *Haavk_Strings[] = {
             "天空属于哈夫克", 
@@ -454,12 +527,12 @@ void process_command(char* cmd)
         uart_write_string(UART_INDEX, "\r\n");
     }
     else
-
     {
-        uart_write_string(UART_INDEX, "Unknown command: ");
+        uart_write_string(UART_INDEX, "\033[1;31mUnknown command:\033[0m ");
         uart_write_string(UART_INDEX, cmd);
-        uart_write_string(UART_INDEX, "\r\nType 'help' to see available commands\r\n");
+        uart_write_string(UART_INDEX, "\r\n\033[1;33mType 'help' to see available commands\033[0m\r\n");
     }
+}
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -469,8 +542,7 @@ void process_command(char* cmd)
 //-------------------------------------------------------------------------------------------------------------------
 void show_all_kv_pairs(void)
 {
-    uart_write_string(UART_INDEX, "All key-value pairs:\r\n");
-    uart_write_string(UART_INDEX, "----------------------------------------\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;36m========== All Key-Value Pairs ==========\033[0m\r\n");
 
     int count = 0;
     for(int i = 0; i < MAX_KV_PAIRS; i++)
@@ -478,23 +550,25 @@ void show_all_kv_pairs(void)
         if(KV_List[i].key[0] != '\0')  // Non-empty key
         {
             count++;
-            uart_write_string(UART_INDEX, "Key: ");
+            uart_write_string(UART_INDEX, "\033[1;33m");
+            char index_str[8];
+            sprintf(index_str, "%2d. ", count);
+            uart_write_string(UART_INDEX, index_str);
+            uart_write_string(UART_INDEX, "\033[1;32m");
             uart_write_string(UART_INDEX, KV_List[i].key);
-            uart_write_string(UART_INDEX, " | Value: ");
+            uart_write_string(UART_INDEX, "\033[0m = ");
 
             if(KV_List[i].is_float)
             {
                 char float_str[32];
-                sprintf(float_str, "%.6f", KV_List[i].float_value);
+                sprintf(float_str, "\033[1;36m%.6f\033[0m \033[2m(float)\033[0m", KV_List[i].float_value);
                 uart_write_string(UART_INDEX, float_str);
-                uart_write_string(UART_INDEX, " (float)");
             }
             else
             {
                 char int_str[32];
-                sprintf(int_str, "%d", KV_List[i].int_value);
+                sprintf(int_str, "\033[1;35m%d\033[0m \033[2m(int)\033[0m", KV_List[i].int_value);
                 uart_write_string(UART_INDEX, int_str);
-                uart_write_string(UART_INDEX, " (int)");
             }
             uart_write_string(UART_INDEX, "\r\n");
         }
@@ -502,15 +576,16 @@ void show_all_kv_pairs(void)
 
     if(count == 0)
     {
-        uart_write_string(UART_INDEX, "No key-value pairs found\r\n");
+        uart_write_string(UART_INDEX, "\033[1;31mNo key-value pairs found\033[0m\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mTip:\033[0m Use 'set <key> <value>' to add data\r\n");
     }
     else
     {
-        char count_str[32];
-        sprintf(count_str, "Total %d key-value pairs found\r\n", count);
+        char count_str[64];
+        sprintf(count_str, "\r\n\033[1;32mTotal: %d key-value pairs\033[0m\r\n", count);
         uart_write_string(UART_INDEX, count_str);
     }
-    uart_write_string(UART_INDEX, "----------------------------------------\r\n");
+    uart_write_string(UART_INDEX, "==========================================\r\n");
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -524,7 +599,8 @@ void find_key(char* key)
 
     if(strlen(key) == 0)
     {
-        uart_write_string(UART_INDEX, "Please specify a key to find\r\n");
+        uart_write_string(UART_INDEX, "\033[1;31mError:\033[0m Please specify a key to find\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mUsage:\033[0m find <key>\r\n");
         return;
     }
 
@@ -532,33 +608,31 @@ void find_key(char* key)
     {
         if(KV_List[i].key[0] != '\0' && strcmp(KV_List[i].key, key) == 0)
         {
-            uart_write_string(UART_INDEX, "Key-value pair found:\r\n");
-            uart_write_string(UART_INDEX, "Key: ");
+            uart_write_string(UART_INDEX, "\r\n\033[1;32m✓ Key-value pair found:\033[0m\r\n");
+            uart_write_string(UART_INDEX, "  \033[1;33mKey:\033[0m \033[1;32m");
             uart_write_string(UART_INDEX, KV_List[i].key);
-            uart_write_string(UART_INDEX, "\r\nValue: ");
+            uart_write_string(UART_INDEX, "\033[0m\r\n  \033[1;33mValue:\033[0m ");
 
             if(KV_List[i].is_float)
             {
                 char float_str[32];
-                sprintf(float_str, "%.6f", KV_List[i].float_value);
+                sprintf(float_str, "\033[1;36m%.6f\033[0m \033[2m(float)\033[0m", KV_List[i].float_value);
                 uart_write_string(UART_INDEX, float_str);
-                uart_write_string(UART_INDEX, " (float)");
             }
             else
             {
                 char int_str[32];
-                sprintf(int_str, "%d", KV_List[i].int_value);
+                sprintf(int_str, "\033[1;35m%d\033[0m \033[2m(int)\033[0m", KV_List[i].int_value);
                 uart_write_string(UART_INDEX, int_str);
-                uart_write_string(UART_INDEX, " (int)");
             }
             uart_write_string(UART_INDEX, "\r\n");
             return;
         }
     }
 
-    uart_write_string(UART_INDEX, "Key not found: ");
+    uart_write_string(UART_INDEX, "\033[1;31m✗ Key not found:\033[0m ");
     uart_write_string(UART_INDEX, key);
-    uart_write_string(UART_INDEX, "\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;33mTip:\033[0m Use 'list' to see all available keys\r\n");
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -572,21 +646,22 @@ void delete_key(char* key)
 
     if(strlen(key) == 0)
     {
-        uart_write_string(UART_INDEX, "Please specify a key to delete\r\n");
+        uart_write_string(UART_INDEX, "\033[1;31mError:\033[0m Please specify a key to delete\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mUsage:\033[0m delete <key>\r\n");
         return;
     }
 
     if(kv_storage_remove(key))
     {
-        uart_write_string(UART_INDEX, "Successfully deleted key-value pair: ");
+        uart_write_string(UART_INDEX, "\033[1;32m✓ Successfully deleted key-value pair:\033[0m ");
         uart_write_string(UART_INDEX, key);
         uart_write_string(UART_INDEX, "\r\n");
     }
     else
     {
-        uart_write_string(UART_INDEX, "Failed to delete, key not found: ");
+        uart_write_string(UART_INDEX, "\033[1;31m✗ Failed to delete, key not found:\033[0m ");
         uart_write_string(UART_INDEX, key);
-        uart_write_string(UART_INDEX, "\r\n");
+        uart_write_string(UART_INDEX, "\r\n\033[1;33mTip:\033[0m Use 'find <key>' to check if key exists\r\n");
     }
 }
 
@@ -597,16 +672,17 @@ void delete_key(char* key)
 //-------------------------------------------------------------------------------------------------------------------
 void format_flash(void)
 {
-    uart_write_string(UART_INDEX, "Warning: This operation will delete all data!\r\n");
-    uart_write_string(UART_INDEX, "Formatting Flash storage...\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;31m⚠️  WARNING: This operation will delete ALL data!\033[0m\r\n");
+    uart_write_string(UART_INDEX, "\033[1;33mFormatting Flash storage...\033[0m\r\n");
 
     if(kv_storage_format())
     {
-        uart_write_string(UART_INDEX, "Flash storage formatted successfully\r\n");
+        uart_write_string(UART_INDEX, "\033[1;32m✓ Flash storage formatted successfully\033[0m\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mTip:\033[0m Storage is now empty. Use 'set <key> <value>' to add data.\r\n");
     }
     else
     {
-        uart_write_string(UART_INDEX, "Failed to format Flash storage\r\n");
+        uart_write_string(UART_INDEX, "\033[1;31m✗ Failed to format Flash storage\033[0m\r\n");
     }
 }
 
@@ -622,7 +698,9 @@ void parse_set_command(char* cmd)
     
     if(strlen(cmd) == 0)
     {
-        uart_write_string(UART_INDEX, "Usage: set <key> <value>\r\n");
+        uart_write_string(UART_INDEX, "\033[1;31mError:\033[0m Missing parameters\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mUsage:\033[0m set <key> <value>\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mExample:\033[0m set temperature 23.5\r\n");
         return;
     }
     
@@ -630,7 +708,8 @@ void parse_set_command(char* cmd)
     char* space_pos = strchr(cmd, ' ');
     if(space_pos == NULL)
     {
-        uart_write_string(UART_INDEX, "Usage: set <key> <value>\r\n");
+        uart_write_string(UART_INDEX, "\033[1;31mError:\033[0m Missing value parameter\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mUsage:\033[0m set <key> <value>\r\n");
         return;
     }
     
@@ -644,7 +723,8 @@ void parse_set_command(char* cmd)
     
     if(strlen(value_str) == 0)
     {
-        uart_write_string(UART_INDEX, "Please specify a value\r\n");
+        uart_write_string(UART_INDEX, "\033[1;31mError:\033[0m Empty value\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mUsage:\033[0m set <key> <value>\r\n");
         return;
     }
     
@@ -662,13 +742,14 @@ void parse_set_command(char* cmd)
         success = kv_storage_set_float(key, value);
         if(success)
         {
-            uart_write_string(UART_INDEX, "Successfully set float value: ");
+            uart_write_string(UART_INDEX, "\033[1;32m✓ Successfully set float value:\033[0m ");
+            uart_write_string(UART_INDEX, "\033[1;33m");
             uart_write_string(UART_INDEX, key);
-            uart_write_string(UART_INDEX, " = ");
+            uart_write_string(UART_INDEX, "\033[0m = \033[1;36m");
             char float_str[32];
             sprintf(float_str, "%.6f", value);
             uart_write_string(UART_INDEX, float_str);
-            uart_write_string(UART_INDEX, "\r\n");
+            uart_write_string(UART_INDEX, "\033[0m\r\n");
         }
     }
     else
@@ -677,20 +758,212 @@ void parse_set_command(char* cmd)
         success = kv_storage_set_int(key, value);
         if(success)
         {
-            uart_write_string(UART_INDEX, "Successfully set integer value: ");
+            uart_write_string(UART_INDEX, "\033[1;32m✓ Successfully set integer value:\033[0m ");
+            uart_write_string(UART_INDEX, "\033[1;33m");
             uart_write_string(UART_INDEX, key);
-            uart_write_string(UART_INDEX, " = ");
+            uart_write_string(UART_INDEX, "\033[0m = \033[1;35m");
             char int_str[32];
             sprintf(int_str, "%d", value);
             uart_write_string(UART_INDEX, int_str);
-            uart_write_string(UART_INDEX, "\r\n");
+            uart_write_string(UART_INDEX, "\033[0m\r\n");
         }
     }
     
     if(!success)
     {
-        uart_write_string(UART_INDEX, "Failed to set value, storage may be full\r\n");
+        uart_write_string(UART_INDEX, "\033[1;31m✗ Failed to set value\033[0m\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mPossible causes:\033[0m Storage full, invalid key, or system error\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mTip:\033[0m Use 'status' to check storage usage\r\n");
     }
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介       显示存储状态信息
+// 参数说明       void
+// 返回参数       void
+//-------------------------------------------------------------------------------------------------------------------
+void show_status(void)
+{
+    uart_write_string(UART_INDEX, "\r\n\033[1;36m========== Storage Status ==========\033[0m\r\n");
+    
+    // 统计键值对数量
+    int used_slots = 0;
+    int int_count = 0;
+    int float_count = 0;
+    
+    for(int i = 0; i < MAX_KV_PAIRS; i++)
+    {
+        if(KV_List[i].key[0] != '\0')
+        {
+            used_slots++;
+            if(KV_List[i].is_float)
+                float_count++;
+            else
+                int_count++;
+        }
+    }
+    
+    uart_write_string(UART_INDEX, "\033[1;32mStorage Usage:\033[0m\r\n");
+    char stat_str[64];
+    sprintf(stat_str, "  Used slots: %d / %d (%.1f%%)\r\n", 
+            used_slots, MAX_KV_PAIRS, (float)used_slots * 100 / MAX_KV_PAIRS);
+    uart_write_string(UART_INDEX, stat_str);
+    
+    sprintf(stat_str, "  Integer values: %d\r\n", int_count);
+    uart_write_string(UART_INDEX, stat_str);
+    
+    sprintf(stat_str, "  Float values: %d\r\n", float_count);
+    uart_write_string(UART_INDEX, stat_str);
+    
+    uart_write_string(UART_INDEX, "\r\n\033[1;32mMemory Info:\033[0m\r\n");
+    sprintf(stat_str, "  Max pairs: %d\r\n", MAX_KV_PAIRS);
+    uart_write_string(UART_INDEX, stat_str);
+    
+    sprintf(stat_str, "  Memory usage: %d bytes\r\n", (int)sizeof(KV_List));
+    uart_write_string(UART_INDEX, stat_str);
+    
+    if(used_slots == 0)
+    {
+        uart_write_string(UART_INDEX, "\r\n\033[1;33mTip:\033[0m Storage is empty. Use 'set <key> <value>' to add data.\r\n");
+    }
+    else if(used_slots >= MAX_KV_PAIRS * 0.8)
+    {
+        uart_write_string(UART_INDEX, "\r\n\033[1;31mWarning:\033[0m Storage is nearly full!\r\n");
+    }
+    
+    uart_write_string(UART_INDEX, "=====================================\r\n");
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介       显示版本信息
+// 参数说明       void
+// 返回参数       void
+//-------------------------------------------------------------------------------------------------------------------
+void show_version(void)
+{
+    uart_write_string(UART_INDEX, "\r\n\033[1;36m========== Version Information ==========\033[0m\r\n");
+    uart_write_string(UART_INDEX, "\033[1;32mFlash KV Storage CLI\033[0m\r\n");
+    uart_write_string(UART_INDEX, "Version: \033[1;33m2.0 Enhanced\033[0m\r\n");
+    uart_write_string(UART_INDEX, "Build Date: \033[1;33m" __DATE__ " " __TIME__ "\033[0m\r\n");
+    uart_write_string(UART_INDEX, "Platform: \033[1;33mSeekfree HAL Library\033[0m\r\n");
+    uart_write_string(UART_INDEX, "Target: \033[1;33mCYT2BL3 MCU\033[0m\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;32mFeatures:\033[0m\r\n");
+    uart_write_string(UART_INDEX, "  • Key-Value storage in Flash memory\r\n");
+    uart_write_string(UART_INDEX, "  • Auto-type detection (int/float)\r\n");
+    uart_write_string(UART_INDEX, "  • Command aliases and tab completion\r\n");
+    uart_write_string(UART_INDEX, "  • Colored terminal output\r\n");
+    uart_write_string(UART_INDEX, "  • Storage statistics and monitoring\r\n");
+    uart_write_string(UART_INDEX, "\r\n\033[1;35mRepository:\033[0m https://github.com/Eclipse-01/Smartcar-Menu-and-Flash-Storage\r\n");
+    uart_write_string(UART_INDEX, "==========================================\r\n");
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介       清屏
+// 参数说明       void
+// 返回参数       void
+//-------------------------------------------------------------------------------------------------------------------
+void clear_screen(void)
+{
+    // ANSI escape sequence to clear screen and move cursor to top-left
+    uart_write_string(UART_INDEX, "\033[2J\033[H");
+    uart_write_string(UART_INDEX, "\r\n\033[1;36m===========================================\033[0m\r\n");
+    uart_write_string(UART_INDEX, "\033[1;36m    Flash KV Storage Manage CLI v2.0\033[0m\r\n");
+    uart_write_string(UART_INDEX, "\033[1;36m===========================================\033[0m\r\n");
+    uart_write_string(UART_INDEX, "Type '\033[1;33mhelp\033[0m' to see available commands\r\n");
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介       自动完成命令 (基础实现)
+// 参数说明       partial - 部分命令字符串
+// 返回参数       完整命令字符串或NULL
+//-------------------------------------------------------------------------------------------------------------------
+char* complete_command(char* partial)
+{
+    static char* commands[] = {
+        "list", "ls", "find", "delete", "rm", "set", "format", 
+        "save", "load", "help", "h", "status", "history", "version", "clear", "exit", "quit", NULL
+    };
+    
+    int len = strlen(partial);
+    if(len == 0) return NULL;
+    
+    char* match = NULL;
+    int match_count = 0;
+    
+    for(int i = 0; commands[i] != NULL; i++)
+    {
+        if(strncmp(commands[i], partial, len) == 0)
+        {
+            match = commands[i];
+            match_count++;
+            if(match_count > 1) break; // 多个匹配，不自动完成
+        }
+    }
+    
+    return (match_count == 1) ? match : NULL;
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介       添加命令到历史记录
+// 参数说明       cmd - 要添加的命令
+// 返回参数       void
+//-------------------------------------------------------------------------------------------------------------------
+void add_to_history(char* cmd)
+{
+    // 避免添加重复的连续命令
+    if(history_count > 0 && strcmp(command_history[(history_count - 1) % MAX_HISTORY], cmd) == 0)
+    {
+        return;
+    }
+    
+    // 添加命令到历史
+    strcpy(command_history[history_count % MAX_HISTORY], cmd);
+    
+    if(history_count < MAX_HISTORY)
+    {
+        history_count++;
+    }
+    
+    // 重置历史索引
+    history_index = history_count;
+    in_history_mode = false;
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介       显示命令历史
+// 参数说明       void
+// 返回参数       void
+//-------------------------------------------------------------------------------------------------------------------
+void show_history(void)
+{
+    uart_write_string(UART_INDEX, "\r\n\033[1;36m========== Command History ==========\033[0m\r\n");
+    
+    if(history_count == 0)
+    {
+        uart_write_string(UART_INDEX, "\033[1;31mNo command history available\033[0m\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mTip:\033[0m Start entering commands to build history\r\n");
+    }
+    else
+    {
+        int start = (history_count > MAX_HISTORY) ? history_count - MAX_HISTORY : 0;
+        int end = history_count;
+        
+        for(int i = start; i < end; i++)
+        {
+            char index_str[16];
+            sprintf(index_str, "\033[1;33m%2d. \033[0m", i + 1);
+            uart_write_string(UART_INDEX, index_str);
+            uart_write_string(UART_INDEX, "\033[1;32m");
+            uart_write_string(UART_INDEX, command_history[i % MAX_HISTORY]);
+            uart_write_string(UART_INDEX, "\033[0m\r\n");
+        }
+        
+        char count_str[32];
+        sprintf(count_str, "\r\n\033[1;32mTotal: %d commands in history\033[0m\r\n", history_count);
+        uart_write_string(UART_INDEX, count_str);
+    }
+    
+    uart_write_string(UART_INDEX, "=====================================\r\n");
 }
 
 
