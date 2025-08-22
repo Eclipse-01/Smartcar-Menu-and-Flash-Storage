@@ -242,6 +242,16 @@ char command_buffer[128];                                                       
 uint8 command_index = 0;                                                        // 命令索引
 bool command_ready = false;                                                     // 命令是否准备就绪
 
+// 命令历史相关变量
+#define MAX_HISTORY 10
+char command_history[MAX_HISTORY][128];                                         // 命令历史缓冲区
+uint8 history_count = 0;                                                        // 历史命令数量
+uint8 history_index = 0;                                                        // 当前历史索引
+bool in_history_mode = false;                                                   // 是否在历史模式中
+
+// 转义序列处理状态
+uint8 escape_state = 0;  // 0=normal, 1=ESC, 2=ESC[
+
 // 函数声明
 void process_command(char* cmd);
 void show_all_kv_pairs(void);
@@ -254,6 +264,8 @@ void show_status(void);
 void show_version(void);
 void clear_screen(void);
 char* complete_command(char* partial);
+void add_to_history(char* cmd);
+void show_history(void);
 
 void kv_cli(void)
 {
@@ -313,6 +325,29 @@ void kv_cli(void)
                         uart_write_string(UART_INDEX, "\b \b");  // 回显退格
                     }
                 }
+                else if(c == '\t')  // TAB 自动完成
+                {
+                    command_buffer[command_index] = '\0';  // 确保字符串结束
+                    char* completion = complete_command(command_buffer);
+                    if(completion != NULL)
+                    {
+                        // 清除当前输入
+                        for(int j = 0; j < command_index; j++)
+                        {
+                            uart_write_string(UART_INDEX, "\b \b");
+                        }
+                        
+                        // 输出完整命令
+                        uart_write_string(UART_INDEX, completion);
+                        strcpy(command_buffer, completion);
+                        command_index = strlen(completion);
+                    }
+                    else
+                    {
+                        // 没有匹配或多个匹配，发出提示音
+                        uart_write_byte(UART_INDEX, 7);  // BEL 字符
+                    }
+                }
                 else if(command_index < sizeof(command_buffer) - 1)
                 {
                     command_buffer[command_index++] = c;
@@ -325,10 +360,17 @@ void kv_cli(void)
         if(command_ready)
         {
             uart_write_string(UART_INDEX, "\r\n");
+            
+            // 添加到历史记录 (非空命令且非exit命令)
+            if(strlen(command_buffer) > 0 && strncmp(command_buffer, "exit", 4) != 0)
+            {
+                add_to_history(command_buffer);
+            }
+            
             // 检查是否为退出命令
             if(strncmp(command_buffer, "exit", 4) == 0)
             {
-                uart_write_string(UART_INDEX, "Exiting CLI...\r\n");
+                uart_write_string(UART_INDEX, "\033[1;36mExiting CLI...\033[0m\r\n");
                 exit_cli = true;
             }
             else
@@ -384,6 +426,7 @@ void show_help(void)
     uart_write_string(UART_INDEX, "  \033[1;33mformat\033[0m       - Format Flash storage\r\n");
     uart_write_string(UART_INDEX, "\r\n\033[1;32mUtility Commands:\033[0m\r\n");
     uart_write_string(UART_INDEX, "  \033[1;33mstatus\033[0m       - Show storage statistics\r\n");
+    uart_write_string(UART_INDEX, "  \033[1;33mhistory\033[0m      - Show command history\r\n");
     uart_write_string(UART_INDEX, "  \033[1;33mclear\033[0m        - Clear screen\r\n");
     uart_write_string(UART_INDEX, "  \033[1;33mversion\033[0m      - Show version information\r\n");
     uart_write_string(UART_INDEX, "  \033[1;33mhelp\033[0m (h, ?)  - Show this help information\r\n");
@@ -457,6 +500,10 @@ void process_command(char* cmd)
     else if(strncmp(cmd, "clear", 5) == 0)
     {
         clear_screen();
+    }
+    else if(strncmp(cmd, "history", 7) == 0)
+    {
+        show_history();
     }
     else if(strncmp(cmd, "exit", 4) == 0 || strncmp(cmd, "quit", 4) == 0)
     {
@@ -834,7 +881,7 @@ char* complete_command(char* partial)
 {
     static char* commands[] = {
         "list", "ls", "find", "delete", "rm", "set", "format", 
-        "save", "load", "help", "h", "status", "version", "clear", "exit", "quit", NULL
+        "save", "load", "help", "h", "status", "history", "version", "clear", "exit", "quit", NULL
     };
     
     int len = strlen(partial);
@@ -854,6 +901,69 @@ char* complete_command(char* partial)
     }
     
     return (match_count == 1) ? match : NULL;
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介       添加命令到历史记录
+// 参数说明       cmd - 要添加的命令
+// 返回参数       void
+//-------------------------------------------------------------------------------------------------------------------
+void add_to_history(char* cmd)
+{
+    // 避免添加重复的连续命令
+    if(history_count > 0 && strcmp(command_history[(history_count - 1) % MAX_HISTORY], cmd) == 0)
+    {
+        return;
+    }
+    
+    // 添加命令到历史
+    strcpy(command_history[history_count % MAX_HISTORY], cmd);
+    
+    if(history_count < MAX_HISTORY)
+    {
+        history_count++;
+    }
+    
+    // 重置历史索引
+    history_index = history_count;
+    in_history_mode = false;
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介       显示命令历史
+// 参数说明       void
+// 返回参数       void
+//-------------------------------------------------------------------------------------------------------------------
+void show_history(void)
+{
+    uart_write_string(UART_INDEX, "\r\n\033[1;36m========== Command History ==========\033[0m\r\n");
+    
+    if(history_count == 0)
+    {
+        uart_write_string(UART_INDEX, "\033[1;31mNo command history available\033[0m\r\n");
+        uart_write_string(UART_INDEX, "\033[1;33mTip:\033[0m Start entering commands to build history\r\n");
+    }
+    else
+    {
+        int start = (history_count > MAX_HISTORY) ? history_count - MAX_HISTORY : 0;
+        int end = history_count;
+        
+        for(int i = start; i < end; i++)
+        {
+            char index_str[16];
+            sprintf(index_str, "\033[1;33m%2d. \033[0m", i + 1);
+            uart_write_string(UART_INDEX, index_str);
+            uart_write_string(UART_INDEX, "\033[1;32m");
+            uart_write_string(UART_INDEX, command_history[i % MAX_HISTORY]);
+            uart_write_string(UART_INDEX, "\033[0m\r\n");
+        }
+        
+        char count_str[32];
+        sprintf(count_str, "\r\n\033[1;32mTotal: %d commands in history\033[0m\r\n", history_count);
+        uart_write_string(UART_INDEX, count_str);
+    }
+    
+    uart_write_string(UART_INDEX, "=====================================\r\n");
 }
 
 
